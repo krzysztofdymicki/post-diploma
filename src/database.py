@@ -7,6 +7,9 @@ import sqlite3
 import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -41,8 +44,7 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     results_count INTEGER DEFAULT 0
-                )
-            ''')
+                )            ''')
             
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS query_results (
@@ -52,11 +54,35 @@ class Database:
                     title TEXT,
                     snippet TEXT,
                     position INTEGER,
+                    domain TEXT,
+                    locale TEXT,
                     found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_id) REFERENCES queries (id)
                 )
             ''')
             conn.commit()
+            
+            # Migration: Add domain and locale columns if they don't exist
+            self._migrate_add_domain_locale(conn)
+
+    def _migrate_add_domain_locale(self, conn):
+        """Add domain and locale columns to existing query_results table if they don't exist."""
+        try:
+            # Check if columns exist
+            cursor = conn.execute("PRAGMA table_info(query_results)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'domain' not in columns:
+                conn.execute('ALTER TABLE query_results ADD COLUMN domain TEXT')
+                logger.info("Added 'domain' column to query_results table")
+            
+            if 'locale' not in columns:
+                conn.execute('ALTER TABLE query_results ADD COLUMN locale TEXT')
+                logger.info("Added 'locale' column to query_results table")
+                
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Migration error: {e}")
 
     def add_query(self, query_text: str, query_type: str) -> int:
         """Add a new search query to the database."""
@@ -187,16 +213,16 @@ class Database:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close database connection."""
-        self.close()
-
-    # Query Results methods
-    def add_query_result(self, query_id: int, url: str, title: str = None, snippet: str = None, position: int = None) -> int:
+        self.close()    # Query Results methods
+    
+    def add_query_result(self, query_id: int, url: str, title: str = None, snippet: str = None, 
+                        position: int = None, domain: str = None, locale: str = None) -> int:
         """Add a new search result for a query and auto-update results_count."""
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO query_results (query_id, url, title, snippet, position)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (query_id, url, title, snippet, position))
+                INSERT INTO query_results (query_id, url, title, snippet, position, domain, locale)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (query_id, url, title, snippet, position, domain, locale))
             
             # Automatically update results_count in queries table
             cursor = conn.execute('''
