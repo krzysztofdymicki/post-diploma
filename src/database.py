@@ -19,7 +19,6 @@ class Database:
             db_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
             os.makedirs(db_dir, exist_ok=True)
             db_path = os.path.join(db_dir, 'sentiment_research.db')
-        
         self.db_path = db_path
         self._connection = None
         self.init_database()
@@ -43,6 +42,19 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     results_count INTEGER DEFAULT 0,
                     notes TEXT
+                )
+            ''')
+            
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS query_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query_id INTEGER NOT NULL,
+                    url TEXT NOT NULL,
+                    title TEXT,
+                    snippet TEXT,
+                    position INTEGER,
+                    found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (query_id) REFERENCES queries (id)
                 )
             ''')
             conn.commit()
@@ -126,7 +138,7 @@ class Database:
             return cursor.rowcount > 0
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get basic statistics about queries in the database."""
+        """Get basic statistics about queries and results in the database."""
         with self.get_connection() as conn:
             stats = {}
             
@@ -150,6 +162,22 @@ class Database:
             ''')
             stats['by_type'] = {row['query_type']: row['count'] for row in cursor.fetchall()}
             
+            # Query results statistics
+            cursor = conn.execute('SELECT COUNT(*) as total FROM query_results')
+            stats['total_results'] = cursor.fetchone()['total']
+            
+            # Average results per query (only for queries with results)
+            cursor = conn.execute('''
+                SELECT AVG(result_count) as avg_results
+                FROM (
+                    SELECT query_id, COUNT(*) as result_count
+                    FROM query_results
+                    GROUP BY query_id
+                )
+            ''')
+            avg_result = cursor.fetchone()['avg_results']
+            stats['avg_results_per_query'] = round(avg_result, 2) if avg_result else 0
+            
             return stats
     
     def close(self):
@@ -165,3 +193,40 @@ class Database:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close database connection."""
         self.close()
+
+    # Query Results methods
+    def add_query_result(self, query_id: int, url: str, title: str = None, snippet: str = None, position: int = None) -> int:
+        """Add a new search result for a query."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                INSERT INTO query_results (query_id, url, title, snippet, position)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (query_id, url, title, snippet, position))
+            conn.commit()
+            return cursor.lastrowid
+    
+    def get_query_results_by_query(self, query_id: int) -> List[Dict[str, Any]]:
+        """Get all results for a specific query."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT * FROM query_results 
+                WHERE query_id = ? 
+                ORDER BY position ASC, id ASC
+            ''', (query_id,))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_all_query_results(self) -> List[Dict[str, Any]]:
+        """Get all query results ordered by query_id and position."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT * FROM query_results 
+                ORDER BY query_id ASC, position ASC, id ASC
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def delete_query_results_by_query(self, query_id: int) -> int:
+        """Delete all results for a specific query. Returns number of deleted rows."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('DELETE FROM query_results WHERE query_id = ?', (query_id,))
+            conn.commit()
+            return cursor.rowcount
