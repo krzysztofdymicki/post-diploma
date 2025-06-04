@@ -43,8 +43,7 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    results_count INTEGER DEFAULT 0
-                )            ''')
+                    results_count INTEGER DEFAULT 0                )            ''')
             
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS query_results (
@@ -58,6 +57,23 @@ class Database:
                     locale TEXT,
                     found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_id) REFERENCES queries (id)
+                )
+            ''')
+            
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS fetched_content (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query_result_id INTEGER NOT NULL,
+                    url TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'fetching', 'success', 'failed')),
+                    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    content_type TEXT,
+                    http_status_code INTEGER,
+                    parsed_content TEXT,
+                    title_extracted TEXT,
+                    content_length INTEGER,
+                    error_message TEXT,
+                    FOREIGN KEY (query_result_id) REFERENCES query_results (id)
                 )
             ''')
             conn.commit()
@@ -270,3 +286,81 @@ class Database:
             
             conn.commit()
             return deleted_count
+
+    # Fetched Content methods
+    def add_fetched_content(self, query_result_id: int, url: str, status: str = 'pending',
+                           content_type: str = None, http_status_code: int = None,
+                           parsed_content: str = None, title_extracted: str = None,
+                           content_length: int = None, error_message: str = None) -> int:
+        """Add a new fetched content record."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                INSERT INTO fetched_content (
+                    query_result_id, url, status, content_type, http_status_code,
+                    parsed_content, title_extracted, content_length, error_message
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (query_result_id, url, status, content_type, http_status_code,
+                  parsed_content, title_extracted, content_length, error_message))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_fetched_content(self, content_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single fetched content record by ID."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('SELECT * FROM fetched_content WHERE id = ?', (content_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_fetched_content_by_query_result(self, query_result_id: int) -> Optional[Dict[str, Any]]:
+        """Get fetched content for a specific query result."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('SELECT * FROM fetched_content WHERE query_result_id = ?', (query_result_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_all_fetched_content(self) -> List[Dict[str, Any]]:
+        """Get all fetched content records."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('SELECT * FROM fetched_content ORDER BY fetched_at DESC')
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_fetched_content_by_status(self, status: str) -> List[Dict[str, Any]]:
+        """Get all fetched content records with specific status."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('SELECT * FROM fetched_content WHERE status = ? ORDER BY fetched_at DESC', (status,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_fetched_content_status(self, content_id: int, status: str, 
+                                     http_status_code: int = None, parsed_content: str = None,
+                                     title_extracted: str = None, content_length: int = None,
+                                     error_message: str = None) -> bool:
+        """Update fetched content status and related fields."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                UPDATE fetched_content 
+                SET status = ?, http_status_code = ?, parsed_content = ?, 
+                    title_extracted = ?, content_length = ?, error_message = ?,
+                    fetched_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (status, http_status_code, parsed_content, title_extracted, 
+                  content_length, error_message, content_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_fetched_content(self, content_id: int) -> bool:
+        """Delete a fetched content record."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('DELETE FROM fetched_content WHERE id = ?', (content_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def count_fetched_content_by_status(self) -> Dict[str, int]:
+        """Get count of fetched content records by status."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT status, COUNT(*) as count 
+                FROM fetched_content 
+                GROUP BY status
+            ''')
+            return {row[0]: row[1] for row in cursor.fetchall()}
