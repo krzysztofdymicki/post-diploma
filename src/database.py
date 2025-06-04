@@ -21,8 +21,7 @@ class Database:
             db_path = os.path.join(db_dir, 'sentiment_research.db')
         self.db_path = db_path
         self._connection = None
-        self.init_database()
-    
+        self.init_database()    
     def get_connection(self) -> sqlite3.Connection:
         """Get a database connection with row factory for dict-like access."""
         conn = sqlite3.connect(self.db_path)
@@ -40,8 +39,7 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    results_count INTEGER DEFAULT 0,
-                    notes TEXT
+                    results_count INTEGER DEFAULT 0
                 )
             ''')
             
@@ -58,17 +56,17 @@ class Database:
                 )
             ''')
             conn.commit()
-    
-    def add_query(self, query_text: str, query_type: str, notes: str = None) -> int:
+
+    def add_query(self, query_text: str, query_type: str) -> int:
         """Add a new search query to the database."""
         if query_type not in ['tools', 'applications']:
             raise ValueError("query_type must be 'tools' or 'applications'")
         
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO queries (query_text, query_type, notes)
-                VALUES (?, ?, ?)
-            ''', (query_text, query_type, notes))
+                INSERT INTO queries (query_text, query_type)
+                VALUES (?, ?)
+            ''', (query_text, query_type))
             conn.commit()
             return cursor.lastrowid
     
@@ -87,7 +85,6 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.execute('SELECT * FROM queries WHERE status = ? ORDER BY created_at', (status,))
             return [dict(row) for row in cursor.fetchall()]
-    
     def get_queries_by_type(self, query_type: str) -> List[Dict[str, Any]]:
         """Get all queries of a specific type."""
         if query_type not in ['tools', 'applications']:
@@ -96,9 +93,9 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.execute('SELECT * FROM queries WHERE query_type = ? ORDER BY created_at', (query_type,))
             return [dict(row) for row in cursor.fetchall()]
-    
-    def update_query_status(self, query_id: int, status: str, results_count: int = None, notes: str = None) -> bool:
-        """Update the status of a query and optionally results count and notes."""
+
+    def update_query_status(self, query_id: int, status: str, results_count: int = None) -> bool:
+        """Update the status of a query and optionally results count."""
         if status not in ['pending', 'processing', 'completed', 'failed']:
             raise ValueError("Invalid status")
         
@@ -108,10 +105,6 @@ class Database:
         if results_count is not None:
             update_parts.append('results_count = ?')
             params.append(results_count)
-        
-        if notes is not None:
-            update_parts.append('notes = ?')
-            params.append(notes)
         
         params.append(query_id)
         
