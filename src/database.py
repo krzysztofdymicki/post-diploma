@@ -21,7 +21,8 @@ class Database:
             db_path = os.path.join(db_dir, 'sentiment_research.db')
         self.db_path = db_path
         self._connection = None
-        self.init_database()    
+        self.init_database()
+    
     def get_connection(self) -> sqlite3.Connection:
         """Get a database connection with row factory for dict-like access."""
         conn = sqlite3.connect(self.db_path)
@@ -85,6 +86,7 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.execute('SELECT * FROM queries WHERE status = ? ORDER BY created_at', (status,))
             return [dict(row) for row in cursor.fetchall()]
+    
     def get_queries_by_type(self, query_type: str) -> List[Dict[str, Any]]:
         """Get all queries of a specific type."""
         if query_type not in ['tools', 'applications']:
@@ -95,25 +97,25 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
 
     def update_query_status(self, query_id: int, status: str, results_count: int = None) -> bool:
-        """Update the status of a query and optionally results count."""
+        """Update the status of a query and automatically sync results_count."""
         if status not in ['pending', 'processing', 'completed', 'failed']:
             raise ValueError("Invalid status")
         
-        update_parts = ['status = ?', 'updated_at = CURRENT_TIMESTAMP']
-        params = [status]
-        
-        if results_count is not None:
-            update_parts.append('results_count = ?')
-            params.append(results_count)
-        
-        params.append(query_id)
-        
         with self.get_connection() as conn:
-            cursor = conn.execute(f'''
+            # Always calculate actual results_count from query_results table
+            cursor = conn.execute('''
+                SELECT COUNT(*) as count FROM query_results WHERE query_id = ?
+            ''', (query_id,))
+            actual_results_count = cursor.fetchone()['count']
+            
+            # Use provided results_count if given, otherwise use actual count
+            final_results_count = results_count if results_count is not None else actual_results_count
+            
+            cursor = conn.execute('''
                 UPDATE queries 
-                SET {', '.join(update_parts)}
+                SET status = ?, results_count = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            ''', params)
+            ''', (status, final_results_count, query_id))
             conn.commit()
             return cursor.rowcount > 0
     
@@ -189,12 +191,22 @@ class Database:
 
     # Query Results methods
     def add_query_result(self, query_id: int, url: str, title: str = None, snippet: str = None, position: int = None) -> int:
-        """Add a new search result for a query."""
+        """Add a new search result for a query and auto-update results_count."""
         with self.get_connection() as conn:
             cursor = conn.execute('''
                 INSERT INTO query_results (query_id, url, title, snippet, position)
                 VALUES (?, ?, ?, ?, ?)
             ''', (query_id, url, title, snippet, position))
+            
+            # Automatically update results_count in queries table
+            cursor = conn.execute('''
+                UPDATE queries 
+                SET results_count = (
+                    SELECT COUNT(*) FROM query_results WHERE query_id = ?
+                ), updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (query_id, query_id))
+            
             conn.commit()
             return cursor.lastrowid
     
@@ -218,8 +230,17 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
     
     def delete_query_results_by_query(self, query_id: int) -> int:
-        """Delete all results for a specific query. Returns number of deleted rows."""
+        """Delete all results for a specific query and update results_count."""
         with self.get_connection() as conn:
             cursor = conn.execute('DELETE FROM query_results WHERE query_id = ?', (query_id,))
+            deleted_count = cursor.rowcount
+            
+            # Update results_count in queries table
+            cursor = conn.execute('''
+                UPDATE queries 
+                SET results_count = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (query_id,))
+            
             conn.commit()
-            return cursor.rowcount
+            return deleted_count
