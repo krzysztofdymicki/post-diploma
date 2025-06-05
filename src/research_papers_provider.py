@@ -5,7 +5,8 @@ Handles search queries using Semantic Scholar and Crossref APIs.
 
 import logging
 import time
-import random
+import random  # for retry jitter  
+import asyncio  # for async sleep
 import unicodedata
 from typing import List, Dict, Optional, Any
 from datetime import datetime
@@ -28,21 +29,37 @@ async def make_api_request(url: str, headers: dict = None, params: dict = None) 
     """Make a request to the API with proper error handling."""
     if headers is None:
         headers = {"User-Agent": USER_AGENT}
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, params=params, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
-        except httpx.TimeoutException:
-            logger.warning(f"Timeout for request to {url}")
-            return None
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error {e.response.status_code} for {url}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error for {url}: {e}")
-            return None
+    # Retry logic for API request
+    max_retries = 3
+    base_delay = 2.0
+    for attempt in range(max_retries + 1):
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, headers=headers, params=params, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                # Retry on rate limit or server errors
+                if status == 429 or status >= 500:
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"HTTP {status} for {url}: retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(delay)
+                        continue
+                logger.error(f"HTTP error {status} for {url}: {e}")
+                raise
+            except httpx.TimeoutException as e:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"Timeout for {url}: retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(f"Timeout for {url}: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error for {url}: {e}")
+                raise
 
 
 def format_paper_data(data: dict, source: str) -> Dict[str, Any]:
@@ -145,13 +162,15 @@ class ResearchPapersProvider:
                 last_exception = e
                 if attempt < max_retries:
                     delay = base_delay * (2 ** attempt) + random.uniform(1, 3)
-                    logger.warning(f"Search failed on attempt {attempt + 1}/{max_retries + 1} "
-                                 f"for query '{query}'. Waiting {delay:.1f} seconds...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Search failed after {max_retries + 1} attempts for query '{query}'")
-                    
-        # If we get here, all retries failed
+                    logger.warning(
+                        f"Search failed on attempt {attempt + 1}/{max_retries + 1} for query '{query}'. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(f"Search failed after {max_retries + 1} attempts for query '{query}': {e}")
+                break
+        # All retries exhausted
         raise Exception(f"Research papers search failed after {max_retries + 1} attempts: {last_exception}")
     
     async def _perform_search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
