@@ -5,6 +5,7 @@ Handles search queries using DuckDuckGo search engine.
 
 import time
 import logging
+import random
 from typing import List, Dict, Optional, Any
 from urllib.parse import urlparse
 import re
@@ -87,9 +88,103 @@ class InternetSearchProvider:
         self.max_results = max_results
         self.delay_between_searches = delay_between_searches
         
+    def _search_with_retry(self, query: str, query_type: str = "tools", 
+                          max_retries: int = 3, base_delay: float = 5.0) -> List[Dict[str, Any]]:
+        """
+        Perform a search with retry logic and exponential backoff for rate limits.
+        
+        Args:
+            query: Search query string
+            query_type: Type of query ("tools" or "applications")
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds (will be exponentially increased)
+            
+        Returns:
+            List of search results with title, url, and snippet
+            
+        Raises:
+            DuckDuckGoSearchException: If search fails after all retries
+        """
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):  # +1 for initial attempt
+            try:
+                return self._perform_search(query, query_type)
+                
+            except RatelimitException as e:
+                last_exception = e
+                if attempt < max_retries:
+                    # Calculate delay with exponential backoff and jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(1, 3)
+                    logger.warning(f"Rate limit hit on attempt {attempt + 1}/{max_retries + 1} "
+                                 f"for query '{query}'. Waiting {delay:.1f} seconds...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Rate limit exceeded after {max_retries + 1} attempts for query '{query}'")
+                    
+            except (TimeoutException, DuckDuckGoSearchException) as e:
+                # For non-rate-limit errors, don't retry as much
+                last_exception = e
+                if attempt < min(2, max_retries):  # Max 2 retries for timeouts
+                    delay = base_delay + random.uniform(1, 2)
+                    logger.warning(f"Search failed on attempt {attempt + 1}, retrying in {delay:.1f} seconds: {e}")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Search failed after retries for query '{query}': {e}")
+                    break
+                    
+        # If we get here, all retries failed
+        raise DuckDuckGoSearchException(f"Search failed after {max_retries + 1} attempts: {last_exception}")
+    
+    def _perform_search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
+        """
+        Perform the actual search operation (internal method).
+        
+        Args:
+            query: Search query string  
+            query_type: Type of query ("tools" or "applications")
+            
+        Returns:
+            List of search results with title, url, and snippet
+            
+        Raises:
+            RatelimitException, TimeoutException, DuckDuckGoSearchException: Various search errors
+        """
+        logger.info(f"Searching for: '{query}' (type: {query_type})")
+        
+        # Initialize DDGS with timeout
+        ddgs = DDGS(timeout=self.timeout)
+        
+        # Perform text search  
+        raw_results = ddgs.text(
+            keywords=query,
+            region="wt-wt",  # Worldwide
+            safesearch="moderate", 
+            max_results=self.max_results
+        )
+        
+        # Convert to standardized format
+        results = []
+        for i, result in enumerate(raw_results, 1):
+            url = result.get('href', '')
+            domain, locale = extract_domain_and_locale(url)
+            
+            standardized_result = {
+                'title': result.get('title', ''),
+                'url': url,
+                'snippet': result.get('body', ''),
+                'position': i,
+                'domain': domain,
+                'locale': locale
+            }
+            results.append(standardized_result)
+            
+        logger.info(f"Found {len(results)} results for query: '{query}'")
+        return results
+    
     def search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
         """
-        Perform a search query using DuckDuckGo.
+        Public interface for performing searches with automatic retry logic.
         
         Args:
             query: Search query string
@@ -99,52 +194,10 @@ class InternetSearchProvider:
             List of search results with title, url, and snippet
             
         Raises:
-            DuckDuckGoSearchException: If search fails
+            DuckDuckGoSearchException: If search fails after all retries
         """
-        try:
-            logger.info(f"Searching for: '{query}' (type: {query_type})")
-            
-            # Initialize DDGS with timeout
-            ddgs = DDGS(timeout=self.timeout)
-            
-            # Perform text search
-            raw_results = ddgs.text(
-                keywords=query,
-                region="wt-wt",  # Worldwide
-                safesearch="moderate",
-                max_results=self.max_results
-            )
-              # Convert to standardized format
-            results = []
-            for i, result in enumerate(raw_results, 1):
-                url = result.get('href', '')
-                domain, locale = extract_domain_and_locale(url)
-                
-                standardized_result = {
-                    'title': result.get('title', ''),
-                    'url': url,
-                    'snippet': result.get('body', ''),
-                    'position': i,
-                    'domain': domain,
-                    'locale': locale
-                }
-                results.append(standardized_result)
-                
-            logger.info(f"Found {len(results)} results for query: '{query}'")
-            return results
-            
-        except RatelimitException as e:
-            logger.error(f"Rate limit exceeded for query '{query}': {e}")
-            raise DuckDuckGoSearchException(f"Rate limit exceeded: {e}")
-            
-        except TimeoutException as e:
-            logger.error(f"Timeout for query '{query}': {e}")
-            raise DuckDuckGoSearchException(f"Search timeout: {e}")
-            
-        except Exception as e:
-            logger.error(f"Unexpected error during search for '{query}': {e}")
-            raise DuckDuckGoSearchException(f"Search failed: {e}")
-
+        return self._search_with_retry(query, query_type)
+        
 
 class InternetSearchModule:
     """Main research module that coordinates search operations with database."""
@@ -194,8 +247,7 @@ class InternetSearchModule:
             # Update status to processing
             self.database.update_query_status(query_id, 'processing')
             logger.info(f"Processing query {query_id}: '{query_text}'")
-            
-            # Perform search
+              # Perform search with retry logic
             search_results = self.search_engine.search(query_text, query_type)
               # Store results in database
             for result in search_results:
