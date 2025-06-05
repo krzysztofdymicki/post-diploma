@@ -91,7 +91,12 @@ def format_paper_data(data: dict, source: str) -> Dict[str, Any]:
 class ResearchPapersProvider:
     """Research papers search provider for academic literature."""
     
-    def __init__(self, timeout: int = 30, max_results: int = 10, delay_between_searches: float = 2.0):
+    def __init__(self,
+                 timeout: int = 30,
+                 max_results: int = 10,
+                 delay_between_searches: float = 2.0,
+                 semantic_scholar_api_key: Optional[str] = None,
+                 use_only_semantic_scholar: bool = False):
         """
         Initialize research papers provider.
         
@@ -99,10 +104,18 @@ class ResearchPapersProvider:
             timeout: Timeout for API requests in seconds
             max_results: Maximum number of results per search
             delay_between_searches: Delay between searches to avoid rate limiting
+            semantic_scholar_api_key: Optional API key for higher rate limits
+            use_only_semantic_scholar: If True, skip Crossref fallback
         """
         self.timeout = timeout
         self.max_results = max_results
         self.delay_between_searches = delay_between_searches
+        # Optional API key for Semantic Scholar
+        self.semantic_api_key = semantic_scholar_api_key
+        # Flag to use only Semantic Scholar and skip Crossref fallback
+        self.only_semantic = use_only_semantic_scholar
+        # Flag to use only Semantic Scholar (no Crossref)
+        self.only_semantic = use_only_semantic_scholar
     
     async def search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
         """
@@ -161,30 +174,25 @@ class ResearchPapersProvider:
             query = query[:MAX_QUERY_LENGTH] + "..."
             logger.info(f"Query truncated from {original_length} to {len(query)} characters")
         
-        results = []
-        
+        # Only use Semantic Scholar for now; Crossref fallback is disabled
         try:
-            # Search Semantic Scholar
             semantic_results = await self._search_semantic_scholar(query)
-            results.extend(semantic_results)
-            
-            # If we don't have enough results, try Crossref
-            if len(results) < self.max_results:
-                remaining_limit = self.max_results - len(results)
-                crossref_results = await self._search_crossref(query, remaining_limit)
-                results.extend(crossref_results)
-                
         except Exception as e:
-            logger.error(f"Error in research papers search: {e}")
+            logger.error(f"Error in Semantic Scholar search: {e}")
             raise
-        
-        # Limit results and add position numbers
-        results = results[:self.max_results]
+        # Take up to max_results
+        results = semantic_results[:self.max_results]
+        # Assign positions
         for i, result in enumerate(results, 1):
             result['position'] = i
-            
-        logger.info(f"Found {len(results)} research paper results for query: '{query}'")
+        logger.info(f"Found {len(results)} research paper results for query: '{query}' using Semantic Scholar only")
         return results
+        # Previous Crossref fallback logic commented out:
+        # if len(results) < self.max_results:
+        #     remaining_limit = self.max_results - len(results)
+        #     crossref_results = await self._search_crossref(query, remaining_limit)
+        #     # ... extend results
+        # ...
     
     async def _search_semantic_scholar(self, query: str) -> List[Dict[str, Any]]:
         """Search Semantic Scholar API."""
