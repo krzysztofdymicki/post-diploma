@@ -56,7 +56,7 @@ class Database:
                     position INTEGER,
                     domain TEXT,
                     locale TEXT,
-                    source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers')),
+                    source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers', 'research_papers')),
                     source_identifier TEXT,
                     found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_id) REFERENCES queries (id)
@@ -114,7 +114,7 @@ class Database:
             
             if 'source_type' not in columns:
                 # Add source_type column, default existing records to 'internet'
-                conn.execute('ALTER TABLE query_results ADD COLUMN source_type TEXT NOT NULL DEFAULT "internet" CHECK (source_type IN ("internet", "mcp_papers"))')
+                conn.execute('ALTER TABLE query_results ADD COLUMN source_type TEXT NOT NULL DEFAULT "internet" CHECK (source_type IN ("internet", "mcp_papers", "research_papers"))')
                 logger.info("Added 'source_type' column to query_results table")
             
             if 'source_identifier' not in columns:
@@ -257,15 +257,14 @@ class Database:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close database connection."""
-        self.close()    
-    # Query Results methods
+        self.close()      # Query Results methods
     def add_query_result(self, query_id: int, url: str = None, title: str = None, snippet: str = None,
                         position: int = None, domain: str = None, locale: str = None,
                         source_type: str = 'internet', source_identifier: str = None) -> int:
         """Add a new search result for a query and auto-update results_count."""
         # Validate source_type
-        if source_type not in ['internet', 'mcp_papers']:
-            raise ValueError("source_type must be 'internet' or 'mcp_papers'")
+        if source_type not in ['internet', 'mcp_papers', 'research_papers']:
+            raise ValueError("source_type must be 'internet', 'mcp_papers', or 'research_papers'")
             
         with self.get_connection() as conn:
             cursor = conn.execute('''
@@ -294,7 +293,11 @@ class Database:
                 ORDER BY position ASC, id ASC
             ''', (query_id,))
             return [dict(row) for row in cursor.fetchall()]
-    
+
+    def get_query_results(self, query_id: int) -> List[Dict[str, Any]]:
+        """Alias for get_query_results_by_query for compatibility."""
+        return self.get_query_results_by_query(query_id)
+
     def get_all_query_results(self) -> List[Dict[str, Any]]:
         """Get all query results ordered by query_id and position."""
         with self.get_connection() as conn:
