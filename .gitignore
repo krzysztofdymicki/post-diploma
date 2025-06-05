@@ -1,2 +1,4 @@
 tests
 .github
+.pytest_cache
+
