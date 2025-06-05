@@ -42,19 +42,22 @@ class Database:
                     query_type TEXT NOT NULL CHECK (query_type IN ('tools', 'applications')),
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    results_count INTEGER DEFAULT 0                )            ''')
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,                    results_count INTEGER DEFAULT 0
+                )
+            ''')
             
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS query_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     query_id INTEGER NOT NULL,
-                    url TEXT NOT NULL,
+                    url TEXT,
                     title TEXT,
                     snippet TEXT,
                     position INTEGER,
                     domain TEXT,
                     locale TEXT,
+                    source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers')),
+                    source_identifier TEXT,
                     found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_id) REFERENCES queries (id)
                 )
@@ -64,7 +67,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS fetched_content (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     query_result_id INTEGER NOT NULL,
-                    url TEXT NOT NULL,
+                    url TEXT,
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'fetching', 'success', 'failed')),
                     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     content_type TEXT,
@@ -77,9 +80,11 @@ class Database:
                 )
             ''')
             conn.commit()
-            
-            # Migration: Add domain and locale columns if they don't exist
+              # Migration: Add domain and locale columns if they don't exist
             self._migrate_add_domain_locale(conn)
+            
+            # Migration: Add source_type and source_identifier columns, make url nullable
+            self._migrate_add_source_fields(conn)
 
     def _migrate_add_domain_locale(self, conn):
         """Add domain and locale columns to existing query_results table if they don't exist."""
@@ -99,6 +104,30 @@ class Database:
             conn.commit()
         except Exception as e:
             logger.error(f"Migration error: {e}")
+
+    def _migrate_add_source_fields(self, conn):
+        """Add source_type and source_identifier columns, handle url nullable migration."""
+        try:
+            # Check if columns exist
+            cursor = conn.execute("PRAGMA table_info(query_results)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'source_type' not in columns:
+                # Add source_type column, default existing records to 'internet'
+                conn.execute('ALTER TABLE query_results ADD COLUMN source_type TEXT NOT NULL DEFAULT "internet" CHECK (source_type IN ("internet", "mcp_papers"))')
+                logger.info("Added 'source_type' column to query_results table")
+            
+            if 'source_identifier' not in columns:
+                conn.execute('ALTER TABLE query_results ADD COLUMN source_identifier TEXT')
+                logger.info("Added 'source_identifier' column to query_results table")
+                
+            # Note: SQLite doesn't support making existing columns nullable directly
+            # For the url column, we'll handle this in the application logic
+            # New tables created will have url as nullable
+                
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Source fields migration error: {e}")
 
     def add_query(self, query_text: str, query_type: str) -> int:
         """Add a new search query to the database."""
@@ -202,8 +231,7 @@ class Database:
             # Query results statistics
             cursor = conn.execute('SELECT COUNT(*) as total FROM query_results')
             stats['total_results'] = cursor.fetchone()['total']
-            
-            # Average results per query (only for queries with results)
+              # Average results per query (only for queries with results)
             cursor = conn.execute('''
                 SELECT AVG(result_count) as avg_results
                 FROM (
@@ -229,16 +257,21 @@ class Database:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close database connection."""
-        self.close()    # Query Results methods
-    
-    def add_query_result(self, query_id: int, url: str, title: str = None, snippet: str = None, 
-                        position: int = None, domain: str = None, locale: str = None) -> int:
+        self.close()    
+    # Query Results methods
+    def add_query_result(self, query_id: int, url: str = None, title: str = None, snippet: str = None,
+                        position: int = None, domain: str = None, locale: str = None,
+                        source_type: str = 'internet', source_identifier: str = None) -> int:
         """Add a new search result for a query and auto-update results_count."""
+        # Validate source_type
+        if source_type not in ['internet', 'mcp_papers']:
+            raise ValueError("source_type must be 'internet' or 'mcp_papers'")
+            
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO query_results (query_id, url, title, snippet, position, domain, locale)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (query_id, url, title, snippet, position, domain, locale))
+                INSERT INTO query_results (query_id, url, title, snippet, position, domain, locale, source_type, source_identifier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (query_id, url, title, snippet, position, domain, locale, source_type, source_identifier))
             
             # Automatically update results_count in queries table
             cursor = conn.execute('''

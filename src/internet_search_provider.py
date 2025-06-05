@@ -71,7 +71,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SearchEngine:
+class InternetSearchProvider:
     """DuckDuckGo search engine wrapper for sentiment analysis research."""
     
     def __init__(self, timeout: int = 10, max_results: int = 10, delay_between_searches: float = 1.0):
@@ -146,7 +146,7 @@ class SearchEngine:
             raise DuckDuckGoSearchException(f"Search failed: {e}")
 
 
-class ResearchModule:
+class InternetSearchModule:
     """Main research module that coordinates search operations with database."""
     
     def __init__(self, db_path: str = None, search_config: Dict[str, Any] = None):
@@ -169,7 +169,7 @@ class ResearchModule:
         if search_config:
             default_config.update(search_config)
             
-        self.search_engine = SearchEngine(**default_config)
+        self.search_engine = InternetSearchProvider(**default_config)
         
     def process_query(self, query_id: int) -> bool:
         """
