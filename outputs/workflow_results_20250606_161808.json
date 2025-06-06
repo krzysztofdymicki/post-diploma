@@ -1,0 +1,48 @@
+{
+  "total_queries": 3,
+  "internet_results": {
+    "sentiment analysis tools features": {
+      "status": "error",
+      "error": "'InternetSearchProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    },
+    "best sentiment analysis software": {
+      "status": "error",
+      "error": "'InternetSearchProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    },
+    "sentiment analysis tools comparison": {
+      "status": "error",
+      "error": "'InternetSearchProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis tools features": {
+      "status": "error",
+      "error": "'ResearchPapersProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    },
+    "best sentiment analysis software": {
+      "status": "error",
+      "error": "'ResearchPapersProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    },
+    "sentiment analysis tools comparison": {
+      "status": "error",
+      "error": "'ResearchPapersProvider' object has no attribute 'search_and_store'",
+      "query_type": "tools"
+    }
+  },
+  "errors": [
+    "Internet search error for 'sentiment analysis tools features': 'InternetSearchProvider' object has no attribute 'search_and_store'",
+    "Research papers search error for 'sentiment analysis tools features': 'ResearchPapersProvider' object has no attribute 'search_and_store'",
+    "Internet search error for 'best sentiment analysis software': 'InternetSearchProvider' object has no attribute 'search_and_store'",
+    "Research papers search error for 'best sentiment analysis software': 'ResearchPapersProvider' object has no attribute 'search_and_store'",
+    "Internet search error for 'sentiment analysis tools comparison': 'InternetSearchProvider' object has no attribute 'search_and_store'",
+    "Research papers search error for 'sentiment analysis tools comparison': 'ResearchPapersProvider' object has no attribute 'search_and_store'"
+  ],
+  "start_time": "2025-06-06T16:18:08.042391",
+  "topic": "sentiment analysis tools",
+  "end_time": "2025-06-06T16:18:08.044051"
+}

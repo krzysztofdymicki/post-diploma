@@ -194,12 +194,11 @@ class InternetSearchModule:
             db_path: Path to database file
             search_config: Configuration for search engine
         """
-        self.database = Database(db_path)
-          # Default search configuration with more conservative delays
+        self.database = Database(db_path)        # Default search configuration with more conservative delays
         default_config = {
             'timeout': 10,
             'max_results': 10,
-            'delay_between_searches': 3.0  # Increased from 1.0 to be more conservative
+            'delay_between_searches': 5.0  # Increased to 5 seconds to avoid rate limiting
         }
         
         if search_config:

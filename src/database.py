@@ -415,3 +415,83 @@ class Database:
                 GROUP BY status
             ''')
             return {row[0]: row[1] for row in cursor.fetchall()}
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive database statistics for reporting."""
+        with self.get_connection() as conn:
+            stats = {}
+            
+            # Total queries
+            cursor = conn.execute('SELECT COUNT(*) FROM queries')
+            stats['total_queries'] = cursor.fetchone()[0]
+            
+            # Queries by type
+            cursor = conn.execute('''
+                SELECT query_type, COUNT(*) as count 
+                FROM queries 
+                GROUP BY query_type
+            ''')
+            stats['queries_by_type'] = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Queries by status
+            cursor = conn.execute('''
+                SELECT status, COUNT(*) as count 
+                FROM queries 
+                GROUP BY status
+            ''')
+            stats['queries_by_status'] = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Total resources
+            cursor = conn.execute('SELECT COUNT(*) FROM query_results')
+            stats['total_resources'] = cursor.fetchone()[0]
+              # Resources by type (based on associated query type)
+            cursor = conn.execute('''
+                SELECT q.query_type, COUNT(qr.id) as count
+                FROM queries q
+                LEFT JOIN query_results qr ON q.id = qr.query_id
+                WHERE qr.id IS NOT NULL
+                GROUP BY q.query_type
+            ''')
+            stats['resources_by_type'] = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Resources by source type (more useful for current workflow)
+            cursor = conn.execute('''
+                SELECT source_type, COUNT(*) as count
+                FROM query_results
+                WHERE source_type IS NOT NULL
+                GROUP BY source_type
+            ''')
+            stats['resources_by_source'] = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Content status statistics
+            cursor = conn.execute('SELECT COUNT(*) FROM fetched_content')
+            total_content = cursor.fetchone()[0]
+            stats['total_content'] = total_content
+            
+            if total_content > 0:
+                stats['content_by_status'] = self.count_fetched_content_by_status()
+            else:
+                stats['content_by_status'] = {}
+                
+            # Recent activity (queries from last 24 hours)
+            cursor = conn.execute('''
+                SELECT COUNT(*) FROM queries 
+                WHERE created_at >= datetime('now', '-1 day')
+            ''')
+            stats['recent_queries_24h'] = cursor.fetchone()[0]
+            
+            return stats
+    
+    def close(self):
+        """Close the database connection if it exists."""
+        if self._connection:
+            self._connection.close()
+            self._connection = None
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - close database connection."""
+        self.close()

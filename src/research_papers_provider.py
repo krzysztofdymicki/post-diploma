@@ -299,12 +299,11 @@ class ResearchPapersModule:
             search_config: Configuration for search provider
         """
         self.database = Database(db_path)
-        
-        # Default search configuration
+          # Default search configuration
         default_config = {
             'timeout': 30,
             'max_results': 10,
-            'delay_between_searches': 2.0
+            'delay_between_searches': 4.0  # Increased from 2.0 to avoid rate limiting
         }
         
         if search_config:
@@ -354,7 +353,7 @@ class ResearchPapersModule:
                     position=result.get('position', 0),
                     domain=result.get('source', 'research_papers'),
                     locale='academic',
-                    source_type='research_papers',
+                    source_type='mcp_papers',
                     source_identifier=result.get('doi', ''),
                     pdf_url=result.get('pdf_url'),
                     pdf_data=json.dumps(result.get('pdf_data') or {}),
