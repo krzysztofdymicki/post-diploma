@@ -58,6 +58,8 @@ class Database:
                     locale TEXT,
                     source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers', 'research_papers')),
                     source_identifier TEXT,
+                    pdf_url TEXT,
+                    pdf_data TEXT,
                     found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_id) REFERENCES queries (id)
                 )
@@ -120,6 +122,13 @@ class Database:
             if 'source_identifier' not in columns:
                 conn.execute('ALTER TABLE query_results ADD COLUMN source_identifier TEXT')
                 logger.info("Added 'source_identifier' column to query_results table")
+            # Migration: Add pdf_url and pdf_data columns if they don't exist
+            if 'pdf_url' not in columns:
+                conn.execute('ALTER TABLE query_results ADD COLUMN pdf_url TEXT')
+                logger.info("Added 'pdf_url' column to query_results table")
+            if 'pdf_data' not in columns:
+                conn.execute('ALTER TABLE query_results ADD COLUMN pdf_data TEXT')
+                logger.info("Added 'pdf_data' column to query_results table")
                 
             # Note: SQLite doesn't support making existing columns nullable directly
             # For the url column, we'll handle this in the application logic
@@ -260,7 +269,8 @@ class Database:
         self.close()      # Query Results methods
     def add_query_result(self, query_id: int, url: str = None, title: str = None, snippet: str = None,
                         position: int = None, domain: str = None, locale: str = None,
-                        source_type: str = 'internet', source_identifier: str = None) -> int:
+                        source_type: str = 'internet', source_identifier: str = None,
+                        pdf_url: str = None, pdf_data: str = None) -> int:
         """Add a new search result for a query and auto-update results_count."""
         # Validate source_type
         if source_type not in ['internet', 'mcp_papers', 'research_papers']:
@@ -268,9 +278,14 @@ class Database:
             
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO query_results (query_id, url, title, snippet, position, domain, locale, source_type, source_identifier)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (query_id, url, title, snippet, position, domain, locale, source_type, source_identifier))
+                INSERT INTO query_results (
+                    query_id, url, title, snippet, position, domain, locale,
+                    source_type, source_identifier, pdf_url, pdf_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                query_id, url, title, snippet, position, domain, locale,
+                source_type, source_identifier, pdf_url, pdf_data
+            ))
             
             # Automatically update results_count in queries table
             cursor = conn.execute('''

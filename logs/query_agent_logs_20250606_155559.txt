@@ -1,0 +1,22 @@
+============================================================
+📋 QUERY AGENT EXECUTION LOGS
+============================================================
+
+🔍 Step 1 (TaskStep):
+----------------------------------------
+TaskStep(task='=== RESEARCH QUERY GENERATION TASK ===\n\nResearch Topic: sentiment analysis tools\nPages to visit: 1\n\n=== YOUR MISSION ===\nYour goal is to gain a comprehensive perspective on this r...
+
+🔍 Step 2 (ActionStep):
+----------------------------------------
+ActionStep(step_number=1, timing=Timing(start_time=1749218148.1688294, end_time=1749218153.110367, duration=4.941537618637085), model_input_messages=[{'role': <MessageRole.SYSTEM: 'system'>, 'content'...
+
+🔍 Step 3 (ActionStep):
+----------------------------------------
+ActionStep(step_number=2, timing=Timing(start_time=1749218153.1108928, end_time=1749218154.3720503, duration=1.261157512664795), model_input_messages=[{'role': <MessageRole.SYSTEM: 'system'>, 'content...
+
+🔍 Step 4 (ActionStep):
+----------------------------------------
+ActionStep(step_number=3, timing=Timing(start_time=1749218154.372454, end_time=1749218157.4844315, duration=3.1119775772094727), model_input_messages=[{'role': <MessageRole.SYSTEM: 'system'>, 'content...
+
+============================================================
+📊 Total steps: 4

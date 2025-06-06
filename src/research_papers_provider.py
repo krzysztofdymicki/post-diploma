@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 import httpx
 from database import Database
+import json  # for serializing pdf_data
 
 
 # Configure logging
@@ -71,6 +72,9 @@ def format_paper_data(data: dict, source: str) -> Dict[str, Any]:
         result = {}
         
         if source == "semantic_scholar":
+            # Extract PDF data and URL
+            raw_pdf = data.get('openAccessPdf', {}) or {}
+            pdf_url = raw_pdf.get('url') or None
             result.update({
                 'title': unicodedata.normalize('NFKD', str(data.get('title', 'No title available'))),
                 'authors': ', '.join([author.get('name', 'Unknown Author') for author in data.get('authors', [])]),
@@ -80,7 +84,8 @@ def format_paper_data(data: dict, source: str) -> Dict[str, Any]:
                 'abstract': data.get('abstract') or 'No abstract available',
                 'tldr': (data.get('tldr') or {}).get('text', ''),
                 'is_open_access': "Yes" if data.get('isOpenAccess') else "No",
-                'pdf_url': (data.get('openAccessPdf', {}) or {}).get('url', 'Not available'),
+                'pdf_url': pdf_url,
+                'pdf_data': raw_pdf,
                 'source': 'semantic_scholar'
             })
 
@@ -95,6 +100,8 @@ def format_paper_data(data: dict, source: str) -> Dict[str, Any]:
                 'doi': data.get('DOI') or 'No DOI available',
                 'venue': (data.get('container-title') or ['Venue unknown'])[0] if data.get('container-title') else 'Venue unknown',
                 'abstract': 'Available via DOI',
+                'pdf_url': None,
+                'pdf_data': None,
                 'source': 'crossref'
             })
                 
@@ -338,7 +345,7 @@ class ResearchPapersModule:
                 url = None
                 if result.get('doi') and result['doi'] != 'No DOI available':
                     url = f"https://doi.org/{result['doi']}"
-                
+
                 self.database.add_query_result(
                     query_id=query_id,
                     url=url,
@@ -348,7 +355,9 @@ class ResearchPapersModule:
                     domain=result.get('source', 'research_papers'),
                     locale='academic',
                     source_type='research_papers',
-                    source_identifier=result.get('doi', '')
+                    source_identifier=result.get('doi', ''),
+                    pdf_url=result.get('pdf_url'),
+                    pdf_data=json.dumps(result.get('pdf_data') or {}),
                 )
             
             # Update query status to completed

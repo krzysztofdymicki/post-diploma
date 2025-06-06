@@ -2,6 +2,9 @@
 google-generativeai>=0.8.0
 smolagents[openai]>=0.1.0
 
+# Environment management
+python-dotenv>=1.0.0
+
 # Web scraping and processing
 requests>=2.31.0
 beautifulsoup4>=4.12.0
