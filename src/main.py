@@ -331,16 +331,10 @@ class ResearchWorkflow:
             queries_file: Path to existing queries file (skips generation)
             use_internet: Whether to use internet search
             use_papers: Whether to use papers search  
-            max_queries: Maximum queries to process
-            pages_to_visit: Pages to visit for query generation
+            max_queries: Maximum queries to process            pages_to_visit: Pages to visit for query generation
             run_assessment: Whether to run quality assessment after searches            assessment_batch_size: Number of results to assess in one batch
         """
         try:
-            # Note: Database clearing is now optional via --clear-db flag            # Clear database to ensure fresh start with new logic
-            self.logger.info("Clearing database for fresh start...")
-            self.database.clear_database()
-            self.logger.info("✓ Database cleared")
-            
             # Generate or load queries
             if topic and not queries_file:
                 # Generate new queries from topic
@@ -501,8 +495,7 @@ Examples:
     )
     
     parser.add_argument(
-        '--max-queries',
-        type=int,
+        '--max-queries',        type=int,
         help='Maximum number of queries to process'
     )
     
@@ -528,8 +521,8 @@ Examples:
     parser.add_argument(
         '--pages',
         type=int,
-        default=5,
-        help='Number of web pages to visit for query generation (default: 5)'
+        default=10,
+        help='Number of web pages to visit for query generation (default: 10)'
     )
     
     parser.add_argument(

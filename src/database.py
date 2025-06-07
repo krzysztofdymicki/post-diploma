@@ -477,6 +477,54 @@ class Database:
             conn.commit()
             return cursor.lastrowid
 
+    def update_or_create_assessment(self, 
+                      query_result_id: int, original_query_text: str, 
+                      assessment_prompt: str, llm_response_raw: str,
+                      relevance_score: int = None, credibility_score: int = None,
+                      solidity_score: int = None, overall_usefulness_score: int = None,
+                      weighted_average_score: float = None,
+                      llm_justification: str = None, error_message: str = None) -> int:
+        """Update existing assessment or create new one if it doesn't exist."""
+        with self.get_connection() as conn:
+            # Check if assessment already exists
+            cursor = conn.execute('''
+                SELECT id FROM query_result_assessments 
+                WHERE query_result_id = ?
+            ''', (query_result_id,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing assessment
+                cursor = conn.execute('''
+                    UPDATE query_result_assessments SET
+                        original_query_text = ?, assessment_prompt = ?, llm_response_raw = ?,
+                        relevance_score = ?, credibility_score = ?, solidity_score = ?, 
+                        overall_usefulness_score = ?, weighted_average_score = ?, 
+                        llm_justification = ?, error_message = ?, assessed_at = CURRENT_TIMESTAMP
+                    WHERE query_result_id = ?
+                ''', (
+                    original_query_text, assessment_prompt, llm_response_raw,
+                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                    weighted_average_score, llm_justification, error_message, query_result_id
+                ))
+                conn.commit()
+                return existing[0]
+            else:
+                # Create new assessment
+                cursor = conn.execute('''
+                    INSERT INTO query_result_assessments (
+                        query_result_id, original_query_text, assessment_prompt, llm_response_raw,
+                        relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                        weighted_average_score, llm_justification, error_message
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    query_result_id, original_query_text, assessment_prompt, llm_response_raw,
+                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                    weighted_average_score, llm_justification, error_message
+                ))
+                conn.commit()
+                return cursor.lastrowid
+
     def get_assessment_by_query_result_id(self, query_result_id: int) -> Optional[Dict[str, Any]]:
         """Get assessment for a specific query result."""
         with self.get_connection() as conn:
@@ -488,7 +536,7 @@ class Database:
             return dict(row) if row else None
 
     def get_unassessed_query_results(self, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-        """Get query results that haven't been assessed yet, with original query text."""
+        """Get query results that haven't been assessed yet OR have assessment errors, with original query text."""
         with self.get_connection() as conn:
             if limit is None:                # Get all unassessed results when limit is None
                 cursor = conn.execute('''
@@ -505,7 +553,7 @@ class Database:
                     FROM query_results qr
                     JOIN queries q ON qr.query_id = q.id
                     LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
-                    WHERE qra.id IS NULL
+                    WHERE qra.id IS NULL OR qra.error_message IS NOT NULL
                     ORDER BY qr.found_at DESC
                 ''')
             else:
@@ -519,11 +567,10 @@ class Database:
                         qr.domain,
                         qr.source_type,
                         qr.source_identifier,
-                        COALESCE(q.original_user_query, q.query_text) as original_query_text
-                    FROM query_results qr
+                        COALESCE(q.original_user_query, q.query_text) as original_query_text                    FROM query_results qr
                     JOIN queries q ON qr.query_id = q.id
                     LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
-                    WHERE qra.id IS NULL
+                    WHERE qra.id IS NULL OR qra.error_message IS NOT NULL
                     ORDER BY qr.found_at DESC
                     LIMIT ?
                 ''', (limit,))

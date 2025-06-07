@@ -305,7 +305,7 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
         Returns:
             ID of the created assessment record
         """
-        return self.database.add_assessment(
+        return self.database.update_or_create_assessment(
             query_result_id=query_result_id,
             original_query_text=initial_user_query, # Store the initial user query
             assessment_prompt=assessment_prompt,
