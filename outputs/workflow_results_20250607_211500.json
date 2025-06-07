@@ -1,0 +1,211 @@
+{
+  "total_queries": 20,
+  "internet_results": {
+    "sentiment analysis business applications": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "social media monitoring sentiment analysis": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 5,
+      "status": "success"
+    },
+    "brand reputation management sentiment analysis": {
+      "query_id": 7,
+      "status": "success"
+    },
+    "sentiment analysis NLP techniques": {
+      "query_id": 9,
+      "status": "success"
+    },
+    "machine learning for sentiment analysis": {
+      "query_id": 11,
+      "status": "success"
+    },
+    "neural networks sentiment analysis challenges": {
+      "query_id": 13,
+      "status": "success"
+    },
+    "sentiment analysis in market research": {
+      "query_id": 15,
+      "status": "success"
+    },
+    "sentiment analysis customer service improvement": {
+      "query_id": 17,
+      "status": "success"
+    },
+    "challenges in sentiment analysis irony sarcasm": {
+      "query_id": 19,
+      "status": "success"
+    },
+    "hybrid approach sentiment analysis accuracy": {
+      "query_id": 21,
+      "status": "success"
+    },
+    "sentiment analysis political discourse": {
+      "query_id": 23,
+      "status": "success"
+    },
+    "employee sentiment analysis benefits": {
+      "query_id": 25,
+      "status": "success"
+    },
+    "sentiment analysis crisis management": {
+      "query_id": 27,
+      "status": "success"
+    },
+    "sentiment analysis data processing": {
+      "query_id": 29,
+      "status": "success"
+    },
+    "opinion mining applications": {
+      "query_id": 31,
+      "status": "success"
+    },
+    "text classification sentiment analysis": {
+      "query_id": 33,
+      "status": "success"
+    },
+    "sentiment analysis tools comparison": {
+      "query_id": 35,
+      "status": "success"
+    },
+    "sentiment analysis financial markets": {
+      "query_id": 37,
+      "status": "success"
+    },
+    "sentiment analysis healthcare applications": {
+      "query_id": 39,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis business applications": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "social media monitoring sentiment analysis": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 6,
+      "status": "success"
+    },
+    "brand reputation management sentiment analysis": {
+      "query_id": 8,
+      "status": "success"
+    },
+    "sentiment analysis NLP techniques": {
+      "query_id": 10,
+      "status": "success"
+    },
+    "machine learning for sentiment analysis": {
+      "query_id": 12,
+      "status": "success"
+    },
+    "neural networks sentiment analysis challenges": {
+      "query_id": 14,
+      "status": "success"
+    },
+    "sentiment analysis in market research": {
+      "query_id": 16,
+      "status": "success"
+    },
+    "sentiment analysis customer service improvement": {
+      "query_id": 18,
+      "status": "success"
+    },
+    "challenges in sentiment analysis irony sarcasm": {
+      "query_id": 20,
+      "status": "success"
+    },
+    "hybrid approach sentiment analysis accuracy": {
+      "query_id": 22,
+      "status": "success"
+    },
+    "sentiment analysis political discourse": {
+      "query_id": 24,
+      "status": "success"
+    },
+    "employee sentiment analysis benefits": {
+      "query_id": 26,
+      "status": "success"
+    },
+    "sentiment analysis crisis management": {
+      "query_id": 28,
+      "status": "success"
+    },
+    "sentiment analysis data processing": {
+      "query_id": 30,
+      "status": "success"
+    },
+    "opinion mining applications": {
+      "query_id": 32,
+      "status": "success"
+    },
+    "text classification sentiment analysis": {
+      "query_id": 34,
+      "status": "success"
+    },
+    "sentiment analysis tools comparison": {
+      "query_id": 36,
+      "status": "success"
+    },
+    "sentiment analysis financial markets": {
+      "query_id": 38,
+      "status": "success"
+    },
+    "sentiment analysis healthcare applications": {
+      "query_id": 40,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T21:10:13.471039",
+  "topic": "sentiment analysis applications",
+  "end_time": "2025-06-07T21:12:39.772702",
+  "assessment": {
+    "processed_count": 10,
+    "success_count": 6,
+    "error_count": 4,
+    "errors": [
+      {
+        "query_result_id": 243,
+        "error": "Failed to validate/parse LLM response (attempt 3/3): 1 validation error for AssessmentResponse\n  Invalid JSON: EOF while parsing a string at line 4 column 21 [type=json_invalid, input_value='{\\n  \"credibility_score\"...\\n  \"overall_usefulness', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/json_invalid"
+      },
+      {
+        "query_result_id": 246,
+        "error": "Unexpected response structure (attempt 3/3): module 'google.generativeai.types' has no attribute 'FinishReason'. Response: response:\nGenerateContentResponse(\n    done=True,\n    iterator=None,\n    result=protos.GenerateContentResponse({\n      \"candidates\": [\n        {\n          \"content\": {\n            \"role\": \"model\"\n          },\n          \"finish_reason\": \"MAX_TOKENS\",\n          \"index\": 0\n        }\n      ],\n      \"usage_metadata\": {\n        \"prompt_token_count\": 1073,\n        \"total_token_count\": 2072\n      },\n      \"model_version\": \"models/gemini-2.5-flash-preview-05-20\"\n    }),\n)"
+      },
+      {
+        "query_result_id": 248,
+        "error": "Unexpected response structure (attempt 3/3): module 'google.generativeai.types' has no attribute 'FinishReason'. Response: response:\nGenerateContentResponse(\n    done=True,\n    iterator=None,\n    result=protos.GenerateContentResponse({\n      \"candidates\": [\n        {\n          \"content\": {\n            \"role\": \"model\"\n          },\n          \"finish_reason\": \"MAX_TOKENS\",\n          \"index\": 0\n        }\n      ],\n      \"usage_metadata\": {\n        \"prompt_token_count\": 852,\n        \"total_token_count\": 1851\n      },\n      \"model_version\": \"models/gemini-2.5-flash-preview-05-20\"\n    }),\n)"
+      },
+      {
+        "query_result_id": 251,
+        "error": "Unexpected response structure (attempt 3/3): module 'google.generativeai.types' has no attribute 'FinishReason'. Response: response:\nGenerateContentResponse(\n    done=True,\n    iterator=None,\n    result=protos.GenerateContentResponse({\n      \"candidates\": [\n        {\n          \"content\": {\n            \"role\": \"model\"\n          },\n          \"finish_reason\": \"MAX_TOKENS\",\n          \"index\": 0\n        }\n      ],\n      \"usage_metadata\": {\n        \"prompt_token_count\": 1016,\n        \"total_token_count\": 2015\n      },\n      \"model_version\": \"models/gemini-2.5-flash-preview-05-20\"\n    }),\n)"
+      }
+    ],
+    "statistics": {
+      "total_assessments": 10,
+      "score_distribution": {
+        "score_5": 3,
+        "score_4": 1,
+        "score_2": 2
+      },
+      "high_value_results": 4,
+      "average_scores": {
+        "relevance": 3.83,
+        "credibility": 0.0,
+        "solidity": 4.67,
+        "usefulness": 3.83
+      },
+      "error_count": 4,
+      "error_rate": 40.0
+    }
+  }
+}

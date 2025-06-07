@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class AssessmentResponse(BaseModel):
     """Pydantic model for structured assessment response from LLM."""
     relevance_score: int = Field(description="Relevance to original query (1-5)")
-    credibility_score: int = Field(description="Source credibility score (1-5)")
+    credibility_score: Optional[int] = Field(description="Source credibility score (1-5) or null for academic papers")
     solidity_score: int = Field(description="Content quality and depth (1-5)")
     overall_usefulness_score: int = Field(description="Overall usefulness for research (1-5)")
     llm_justification: str = Field(description="Brief explanation for the assessment")
@@ -46,7 +46,7 @@ ASSESSMENT_WEIGHTS = {
 class AssessmentResult:
     """Data class for storing assessment results."""
     relevance_score: int
-    credibility_score: int
+    credibility_score: Optional[int]  # Can be None for research papers
     solidity_score: int
     overall_usefulness_score: int
     weighted_average_score: float
@@ -104,14 +104,13 @@ class QualityAssessmentModule:
             
         Returns:
             Formatted prompt string for LLM
-        """
-        # specific_query_that_found_this_result = result_data.get('original_query_text', '') # This is the specific query
+        """        # specific_query_that_found_this_result = result_data.get('original_query_text', '') # This is the specific query
         title = result_data.get('title', 'No title available')
         snippet = result_data.get('snippet', 'No content preview available')
         source_type = result_data.get('source_type', 'unknown')
         domain = result_data.get('domain', 'Unknown domain')
         
-        prompt = f"""You are a research assistant.
+        prompt = f"""You are a research assistant conducting a STRICT and CRITICAL assessment.
 Your task is to assess the following search result for its usefulness.
 
 INITIAL USER QUERY: "{initial_user_query}"
@@ -122,47 +121,52 @@ SEARCH RESULT TO ASSESS:
 - Content Preview/Abstract: {snippet}
 {f"- Domain: {domain}" if source_type == 'internet' else ""}
 
+CRITICAL ASSESSMENT INSTRUCTIONS:
+- Be EXTREMELY STRICT and CRITICAL in your evaluation
+- Base your relevance assessment ONLY on what is visible in the "Content Preview/Abstract" section
+- DO NOT assume any content beyond what is explicitly shown in the preview
+- If the preview doesn't clearly and explicitly demonstrate relevance to the query, score it low
+- Be skeptical - err on the side of lower scores rather than higher ones
+
 ASSESSMENT CRITERIA (Rate each on scale 1-5, where 5 is excellent):
 
-1. RELEVANCE SCORE: How directly related is this result to the INITIAL USER QUERY?
-   - 5: Perfectly matches the INITIAL USER QUERY intent
-   - 4: Highly relevant with minor tangential aspects
-   - 3: Moderately relevant, covers some aspects
-   - 2: Somewhat relevant but mostly off-topic
-   - 1: Not relevant to the INITIAL USER QUERY
+1. RELEVANCE SCORE: How directly related is the VISIBLE CONTENT to the INITIAL USER QUERY?
+   CRITICAL: Judge ONLY based on the "Content Preview/Abstract" provided above.
+   - 5: Preview explicitly addresses the query with specific, detailed examples directly matching the query terms
+   - 4: Preview clearly mentions key terms from query and shows direct connection
+   - 3: Preview shows some connection but lacks specificity or clear relevance
+   - 2: Preview vaguely relates to query but connection is weak or unclear
+   - 1: Preview shows no clear relevance or mentions query terms only in passing
 
 2. CREDIBILITY SCORE: How trustworthy and authoritative is this source?
-   For internet sources (based on domain and URL):
-   - 5: Academic/government domains (.edu, .gov), well-known research institutions
-   - 4: Established tech companies, reputable industry publications
-   - 3: Professional blogs, known industry websites
-   - 2: Personal blogs, less known sources but with clear authorship
-   - 1: Anonymous sources, suspicious domains
+   FOR ACADEMIC PAPERS/RESEARCH SOURCES: Always set this to null (do not provide a number)
    
-   For academic papers (focus only on content relevance to INITIAL USER QUERY, not publication venue):
-   - 5: Content perfectly addresses the INITIAL USER QUERY with high depth
-   - 4: Content strongly related to INITIAL USER QUERY with good coverage
-   - 3: Content moderately related to INITIAL USER QUERY
-   - 2: Content somewhat related but limited coverage
-   - 1: Content barely related to INITIAL USER QUERY
+   FOR INTERNET SOURCES ONLY:
+   - 5: Academic/government domains (.edu, .gov), major research institutions
+   - 4: Established tech companies, well-known industry publications  
+   - 3: Professional industry websites with clear authorship
+   - 2: Personal blogs or lesser-known sources with identifiable authors
+   - 1: Anonymous sources, suspicious domains, or unclear authorship
 
-3. SOLIDITY SCORE: How substantial and well-written is the content?
-   - 5: Comprehensive, detailed, technically accurate
-   - 4: Good depth, clear explanations
-   - 3: Adequate detail, generally clear
-   - 2: Basic information, some clarity issues
-   - 1: Superficial, unclear, or poorly written
+3. SOLIDITY SCORE: How substantial and well-written is the visible content?
+   Based ONLY on the "Content Preview/Abstract":
+   - 5: Comprehensive, technically detailed preview with specific information
+   - 4: Good depth and clarity in preview, well-structured content
+   - 3: Adequate information but lacking depth or clarity
+   - 2: Basic information, vague or poorly structured preview
+   - 1: Superficial, unclear, or very poorly written preview
 
 4. OVERALL USEFULNESS SCORE: How valuable would this be for research based on the INITIAL USER QUERY?
-   - 5: Essential resource, would definitely use
-   - 4: Very useful, likely to use
-   - 3: Moderately useful, might use
-   - 2: Limited usefulness, unlikely to use
-   - 1: Not useful for research
+   Consider ONLY what is visible in the preview - be conservative:
+   - 5: Essential resource based on preview, clearly addresses research needs
+   - 4: Very useful based on preview, strong potential value
+   - 3: Moderately useful, some potential value visible in preview
+   - 2: Limited usefulness, minimal value apparent from preview
+   - 1: Not useful for research based on what's shown in preview
 
-JUSTIFICATION: Provide a brief (1-2 sentences) explanation for your overall assessment, particularly focusing on why you gave the overall usefulness score.
+JUSTIFICATION: Provide a brief (1-2 sentences) explanation focusing specifically on why the visible content preview does or does not match the initial user query.
 
-Please assess this research result according to the criteria above."""        
+IMPORTANT: Be critical and conservative in your scoring. If there's any doubt about relevance or quality based on the preview alone, score lower rather than higher."""
         return prompt
 
     def assess_result(self, result_data: Dict[str, Any], initial_user_query: str, max_retries: int = 3) -> AssessmentResult:
@@ -175,8 +179,7 @@ Please assess this research result according to the criteria above."""
             max_retries: Maximum number of retry attempts
             
         Returns:
-            AssessmentResult object with scores and justification
-        """
+            AssessmentResult object with scores and justification        """
         last_error = None
         
         for attempt in range(max_retries):
@@ -197,7 +200,7 @@ Please assess this research result according to the criteria above."""
                         logger.error(error_msg)
                         last_error = error_msg
                         if attempt < max_retries - 1: time.sleep(1); continue
-                        break 
+                        break
                     else:
                         error_msg = f"No content part in response. Finish reason: {finish_reason_val}"
                         logger.error(error_msg)
@@ -229,17 +232,24 @@ Please assess this research result according to the criteria above."""
                     last_error = "Failed to extract AssessmentResponse object from LLM response."
                     logger.error(last_error)
                     if attempt < max_retries - 1: time.sleep(1); continue
-                    break                # Calculate weighted average score
+                    break
+                
+                # Set credibility_score to None for research papers (as per system requirements)
+                credibility_score = assessment_pydantic.credibility_score
+                if result_data.get('source_type') == 'research_paper':
+                    credibility_score = None
+                
+                # Calculate weighted average score
                 weighted_avg = self.calculate_weighted_average(
                     assessment_pydantic.relevance_score,
-                    assessment_pydantic.credibility_score,
+                    credibility_score,
                     assessment_pydantic.solidity_score,
                     assessment_pydantic.overall_usefulness_score
                 )
 
                 return AssessmentResult(
                     relevance_score=assessment_pydantic.relevance_score,
-                    credibility_score=assessment_pydantic.credibility_score,
+                    credibility_score=credibility_score,
                     solidity_score=assessment_pydantic.solidity_score,
                     overall_usefulness_score=assessment_pydantic.overall_usefulness_score,
                     weighted_average_score=weighted_avg,
@@ -264,12 +274,11 @@ Please assess this research result according to the criteria above."""
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
-                break
-        
+                break        
         error_msg = last_error or "Unknown error during assessment after all retries"
         logger.error(f"All retry attempts failed for result_data: {result_data.get('query_result_id')}. Final error: {error_msg}")
         return AssessmentResult(
-            relevance_score=0, credibility_score=0, solidity_score=0,
+            relevance_score=0, credibility_score=None, solidity_score=0,
             overall_usefulness_score=0, weighted_average_score=0.0,
             llm_justification="", error_message=error_msg
         )
@@ -295,28 +304,26 @@ Please assess this research result according to the criteria above."""
             original_query_text=initial_user_query, # Store the initial user query
             assessment_prompt=assessment_prompt,
             llm_response_raw=llm_response_raw,
-            relevance_score=assessment.relevance_score if assessment.relevance_score > 0 else None,
-            credibility_score=assessment.credibility_score if assessment.credibility_score > 0 else None,
-            solidity_score=assessment.solidity_score if assessment.solidity_score > 0 else None,
-            overall_usefulness_score=assessment.overall_usefulness_score if assessment.overall_usefulness_score > 0 else None,
-            weighted_average_score=assessment.weighted_average_score if assessment.weighted_average_score > 0 else None,
+            relevance_score=assessment.relevance_score if assessment.relevance_score and assessment.relevance_score > 0 else None,
+            credibility_score=assessment.credibility_score if assessment.credibility_score is not None and assessment.credibility_score > 0 else None,
+            solidity_score=assessment.solidity_score if assessment.solidity_score and assessment.solidity_score > 0 else None,
+            overall_usefulness_score=assessment.overall_usefulness_score if assessment.overall_usefulness_score and assessment.overall_usefulness_score > 0 else None,            weighted_average_score=assessment.weighted_average_score if assessment.weighted_average_score and assessment.weighted_average_score > 0 else None,
             llm_justification=assessment.llm_justification,
             error_message=assessment.error_message
         )
 
-    def run_assessment_workflow(self, initial_user_query: str, batch_size: int = 10, delay_between_calls: float = 1.0) -> Dict[str, Any]:
+    def run_assessment_workflow(self, batch_size: int = 10, delay_between_calls: float = 1.0) -> Dict[str, Any]:
         """
         Run the complete assessment workflow on unassessed results.
         
         Args:
-            initial_user_query: The very first query provided by the user to the system.
             batch_size: Number of results to process in this run
             delay_between_calls: Delay in seconds between API calls to avoid rate limits
             
         Returns:
             Dictionary with workflow statistics
         """
-        logger.info(f"Starting quality assessment workflow (batch_size: {batch_size}) for initial query: '{initial_user_query}'")
+        logger.info(f"Starting quality assessment workflow (batch_size: {batch_size})")
         
         unassessed_results = self.database.get_unassessed_query_results(limit=batch_size)
         
@@ -338,20 +345,21 @@ Please assess this research result according to the criteria above."""
         
         for i, result_data in enumerate(unassessed_results):
             try:
-                query_result_id = result_data['query_result_id']
+                query_result_id = result_data['query_result_id']                # Use the original query text specific to this result
+                original_query_text = result_data.get('original_query_text', 'Unknown query')
                 
-                logger.info(f"Processing result {i+1}/{len(unassessed_results)}: ID {query_result_id}")
+                logger.info(f"Processing result {i+1}/{len(unassessed_results)}: ID {query_result_id} for query: '{original_query_text}'")
                 
-                assessment_prompt = self.get_assessment_prompt(result_data, initial_user_query)
-                assessment = self.assess_result(result_data, initial_user_query)
+                assessment_prompt = self.get_assessment_prompt(result_data, original_query_text)
+                assessment = self.assess_result(result_data, original_query_text)
                 
-                raw_response_to_store = assessment.llm_justification 
+                raw_response_to_store = assessment.llm_justification
                 if assessment.error_message:
                     raw_response_to_store = f"ERROR: {assessment.error_message}"
 
                 assessment_id = self.save_assessment(
                     query_result_id=query_result_id,
-                    initial_user_query=initial_user_query,
+                    initial_user_query=original_query_text,
                     assessment_prompt=assessment_prompt,
                     llm_response_raw=raw_response_to_store,
                     assessment=assessment
@@ -435,29 +443,59 @@ Please assess this research result according to the criteria above."""
         
         return stats
 
-    def calculate_weighted_average(self, relevance_score: int, credibility_score: int, 
+    def calculate_weighted_average(self, relevance_score: int, credibility_score: Optional[int], 
                              solidity_score: int, overall_usefulness_score: int) -> float:
         """
         Calculate weighted average score based on predefined weights.
+        When credibility_score is None (for research papers), we redistribute its weight
+        proportionally among the other scores.
         
         Args:
             relevance_score: Relevance to query (1-5)
-            credibility_score: Source credibility (1-5)
+            credibility_score: Source credibility (1-5) or None for research papers
             solidity_score: Content quality (1-5)
             overall_usefulness_score: Overall usefulness (1-5)
-              Returns:
+            
+        Returns:
             Weighted average score (1.0-5.0)
         """
-        if not all(1 <= score <= 5 for score in [relevance_score, credibility_score, 
-                                                 solidity_score, overall_usefulness_score]):
+        # Validate non-null scores
+        scores_to_validate = [relevance_score, solidity_score, overall_usefulness_score]
+        if credibility_score is not None:
+            scores_to_validate.append(credibility_score)
+            
+        if not all(1 <= score <= 5 for score in scores_to_validate):
             raise ValueError("All scores must be between 1 and 5")
         
-        weighted_sum = (
-            relevance_score * ASSESSMENT_WEIGHTS['relevance'] +
-            credibility_score * ASSESSMENT_WEIGHTS['credibility'] +
-            solidity_score * ASSESSMENT_WEIGHTS['solidity'] +
-            overall_usefulness_score * ASSESSMENT_WEIGHTS['overall_usefulness']
-        )
+        if credibility_score is not None:
+            # Standard calculation with all scores
+            weighted_sum = (
+                relevance_score * ASSESSMENT_WEIGHTS['relevance'] +
+                credibility_score * ASSESSMENT_WEIGHTS['credibility'] +
+                solidity_score * ASSESSMENT_WEIGHTS['solidity'] +
+                overall_usefulness_score * ASSESSMENT_WEIGHTS['overall_usefulness']
+            )
+        else:
+            # Redistribute credibility weight proportionally among other scores
+            # New weights when credibility is excluded
+            total_remaining_weight = (ASSESSMENT_WEIGHTS['relevance'] + 
+                                    ASSESSMENT_WEIGHTS['solidity'] + 
+                                    ASSESSMENT_WEIGHTS['overall_usefulness'])
+            
+            # Calculate redistribution factor
+            redistribution_factor = 1.0 / total_remaining_weight
+            
+            adjusted_weights = {
+                'relevance': ASSESSMENT_WEIGHTS['relevance'] * redistribution_factor,
+                'solidity': ASSESSMENT_WEIGHTS['solidity'] * redistribution_factor,
+                'overall_usefulness': ASSESSMENT_WEIGHTS['overall_usefulness'] * redistribution_factor
+            }
+            
+            weighted_sum = (
+                relevance_score * adjusted_weights['relevance'] +
+                solidity_score * adjusted_weights['solidity'] +
+                overall_usefulness_score * adjusted_weights['overall_usefulness']
+            )
         
         return round(weighted_sum, 2)
 

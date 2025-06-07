@@ -446,10 +446,8 @@ class ResearchWorkflow:
                     'errors': [],
                     'statistics': {}
                 }
-            
-            # Run batch assessment
+              # Run batch assessment
             results = assessment_module.run_assessment_workflow(
-                initial_user_query=initial_user_query,
                 batch_size=batch_size
             )
             
@@ -585,24 +583,14 @@ async def run_assessment_workflow(args):
         db = Database()
         assessment_module = QualityAssessmentModule(db)
         
-        # Get initial user query from database (most recent topic)
-        initial_user_query = db.get_latest_topic()
-        if not initial_user_query:
-            print("❌ No initial query found in database. Run search workflow first.")
-            return 1
-            
-        print(f"Using initial query: '{initial_user_query}'")
-        
         # Get unassessed results count
         unassessed_count = len(db.get_unassessed_query_results())
         print(f"Found {unassessed_count} unassessed results")
         
         if unassessed_count == 0:
             print("No unassessed results found. Run search workflow first.")
-            return 1
-              # Run batch assessment
+            return 1# Run batch assessment
         results = assessment_module.run_assessment_workflow(
-            initial_user_query=initial_user_query,
             batch_size=args.assessment_batch_size
         )
         
