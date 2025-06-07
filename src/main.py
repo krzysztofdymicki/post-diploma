@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-Main workflow orchestrator for sentiment analysis research.
+Main workflow orchestrator for academic research.
 
 This script coordinates the complete research workflow:
 1. Loads generated queries from the outputs/ directory
-2. Executes searches using both internet and research paper providers
+2. Executes searches using both internet and re            if resources_by_source:
+                report.append(f"Resources by source type:")
+                for source_type, count in resources_by_source.items():
+                    report.append(f"  • {source_type}: {count}")
+                    
+        except Exception as e:
+            report.append(f"Error retrieving statistics: {e}")roviders
 3. Logs progress and provides comprehensive reporting
 
 Usage:
@@ -29,12 +35,13 @@ from typing import Dict, List, Optional, Any
 from database import Database
 from internet_search_provider import InternetSearchModule
 from research_papers_provider import ResearchPapersModule
+from quality_assessment_module import QualityAssessmentModule
 
 
 class ResearchWorkflow:
     """Main orchestrator for the research workflow."""
     
-    def __init__(self, db_path: str = "data/sentiment_research.db"):
+    def __init__(self, db_path: str = "data/research_db.db"):
         """Initialize the workflow with database connection."""
         self.database = Database(db_path)
         self.internet_provider = InternetSearchModule(db_path)
@@ -139,7 +146,7 @@ class ResearchWorkflow:
             if use_internet:
                 try:
                     self.logger.info(f"  → Internet search...")
-                    query_id = self.internet_provider.search_and_store(query, "tools")
+                    query_id = self.internet_provider.search_and_store(query)
                     
                     if query_id:
                         results['internet_results'][query] = {
@@ -170,7 +177,7 @@ class ResearchWorkflow:
                     
                 try:
                     self.logger.info(f"  → Research papers search...")
-                    query_id = await self.research_provider.search_and_store(query, "tools")
+                    query_id = await self.research_provider.search_and_store(query)
                     
                     if query_id:
                         results['papers_results'][query] = {
@@ -202,7 +209,7 @@ class ResearchWorkflow:
         """Generate a comprehensive report of the workflow execution."""
         report = []
         report.append("=" * 60)
-        report.append("SENTIMENT ANALYSIS RESEARCH WORKFLOW REPORT")
+        report.append("ACADEMIC RESEARCH WORKFLOW REPORT")
         report.append("=" * 60)
         report.append(f"Topic: {results['topic']}")
         report.append(f"Execution time: {results['start_time']} - {results['end_time']}")
@@ -240,8 +247,9 @@ class ResearchWorkflow:
             for error in results['errors']:
                 report.append(f"  • {error}")
             report.append("")
-            
-        # Database statistics        report.append("DATABASE STATISTICS:")
+        
+        # Database statistics
+        report.append("DATABASE STATISTICS:")
         report.append("-" * 20)
         try:
             stats = self.database.get_statistics()
@@ -254,13 +262,6 @@ class ResearchWorkflow:
                 report.append(f"Resources by source:")
                 for source_type, count in resources_by_source.items():
                     report.append(f"  • {source_type}: {count}")
-            
-            # Show historical query type breakdown if exists
-            resources_by_type = stats.get('resources_by_type', {})
-            if resources_by_type:
-                report.append(f"Resources by historical query type:")
-                for db_query_type, count in resources_by_type.items():
-                    report.append(f"  • {db_query_type}: {count}")
                     
         except Exception as e:
             report.append(f"Error retrieving statistics: {e}")
@@ -322,7 +323,7 @@ class ResearchWorkflow:
 async def main():
     """Main entry point with command line argument parsing."""
     parser = argparse.ArgumentParser(
-        description="Execute sentiment analysis research workflow",
+        description="Execute academic research workflow",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -335,8 +336,7 @@ Examples:
     )
     
     parser.add_argument(
-        '--queries-file',
-        type=Path,
+        '--queries-file',        type=Path,
         help='Specific queries JSON file to use (default: latest in outputs/)'
     )
     
@@ -358,7 +358,23 @@ Examples:
         help='Maximum number of queries to process'
     )
     
+    parser.add_argument(
+        '--run-assessment',
+        action='store_true',
+        help='Run quality assessment on unassessed results instead of search'
+    )
+    
+    parser.add_argument(
+        '--assessment-batch-size',
+        type=int,        default=10,
+        help='Number of results to assess in one batch (default: 10)'
+    )
+    
     args = parser.parse_args()
+    
+    # Handle assessment workflow separately
+    if args.run_assessment:
+        return await run_assessment_workflow(args)
     
     # Validate provider selection
     use_internet = not args.papers_only
@@ -368,7 +384,7 @@ Examples:
         print("Error: Cannot disable both providers")
         return 1
         
-    # Initialize and run workflow
+    # Initialize and run search workflow
     workflow = ResearchWorkflow()
     
     try:
@@ -383,6 +399,58 @@ Examples:
         
     except Exception as e:
         print(f"\n✗ Workflow failed: {e}")
+        return 1
+
+
+async def run_assessment_workflow(args):
+    """Run quality assessment workflow on unassessed results."""
+    print("🔍 Starting Quality Assessment Workflow...")
+    
+    try:
+        db = Database()
+        assessment_module = QualityAssessmentModule(db)
+        
+        # Get unassessed results count
+        unassessed_count = len(db.get_unassessed_query_results())
+        print(f"Found {unassessed_count} unassessed results")
+        
+        if unassessed_count == 0:
+            print("No unassessed results found. Run search workflow first.")
+            return 1
+              # Run batch assessment
+        results = assessment_module.run_assessment_workflow(
+            batch_size=args.assessment_batch_size
+        )
+        
+        print(f"\n✅ Assessment completed!")
+        print(f"Processed: {results['processed_count']}")
+        print(f"Successful assessments: {results['success_count']}")
+        print(f"Failed assessments: {results['error_count']}")
+        
+        if results['errors']:
+            print(f"Errors encountered: {len(results['errors'])}")
+            for error in results['errors'][:3]:  # Show first 3 errors
+                print(f"  • Result ID {error['query_result_id']}: {error['error']}")
+        
+        # Show statistics
+        stats = assessment_module.get_assessment_statistics()
+        if stats:
+            print(f"\n📊 Assessment Statistics:")
+            print(f"Total assessments: {stats.get('total_assessments', 0)}")
+            if 'avg_relevance_score' in stats:
+                print(f"Average relevance: {stats['avg_relevance_score']:.2f}")
+                print(f"Average credibility: {stats['avg_credibility_score']:.2f}")
+                print(f"Average usefulness: {stats['avg_usefulness_score']:.2f}")
+            
+            if stats.get('score_distribution'):
+                print(f"Score distribution:")
+                for score_range, count in stats['score_distribution'].items():
+                    print(f"  • {score_range}: {count}")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"\n✗ Assessment workflow failed: {e}")
         return 1
 
 

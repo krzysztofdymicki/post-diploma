@@ -136,18 +136,16 @@ class ResearchPapersProvider:
         self.delay_between_searches = delay_between_searches
         # Optional API key for Semantic Scholar
         self.semantic_api_key = semantic_scholar_api_key
-        # Flag to use only Semantic Scholar and skip Crossref fallback
-        self.only_semantic = use_only_semantic_scholar
+        # Flag to use only Semantic Scholar and skip Crossref fallback        self.only_semantic = use_only_semantic_scholar
         # Flag to use only Semantic Scholar (no Crossref)
         self.only_semantic = use_only_semantic_scholar
     
-    async def search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
+    async def search(self, query: str) -> List[Dict[str, Any]]:
         """
         Perform a search query using academic paper databases with retry mechanism.
         
         Args:
             query: Search query string
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             List of search results with paper details
@@ -163,7 +161,7 @@ class ResearchPapersProvider:
         
         for attempt in range(max_retries + 1):
             try:
-                return await self._perform_search(query, query_type)
+                return await self._perform_search(query)
                 
             except Exception as e:
                 last_exception = e
@@ -178,20 +176,18 @@ class ResearchPapersProvider:
                 logger.error(f"Search failed after {max_retries + 1} attempts for query '{query}': {e}")
                 break
         # All retries exhausted
-        raise Exception(f"Research papers search failed after {max_retries + 1} attempts: {last_exception}")
-    
-    async def _perform_search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
+        raise Exception(f"Research papers search failed after {max_retries + 1} attempts: {last_exception}")    
+    async def _perform_search(self, query: str) -> List[Dict[str, Any]]:
         """
         Perform the actual search operation (internal method).
         
         Args:
             query: Search query string  
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             List of search results with paper details
         """
-        logger.info(f"Searching research papers for: '{query}' (type: {query_type})")
+        logger.info(f"Searching research papers for: '{query}'")
         
         # Truncate long queries
         MAX_QUERY_LENGTH = 300
@@ -320,22 +316,20 @@ class ResearchPapersModule:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Get query details from database
+        try:            # Get query details from database
             query_data = self.database.get_query(query_id)
             if not query_data:
                 logger.error(f"Query {query_id} not found in database")
                 return False
                 
             query_text = query_data['query_text']
-            query_type = query_data['query_type']
             
             # Update status to processing
             self.database.update_query_status(query_id, 'processing')
             logger.info(f"Processing research papers query {query_id}: '{query_text}'")
             
             # Perform search
-            search_results = await self.search_provider.search(query_text, query_type)
+            search_results = await self.search_provider.search(query_text)
               # Store results in database with research papers source
             # Filter results: only save if pdf_url is not null and abstract is meaningful
             valid_results = []
@@ -381,22 +375,20 @@ class ResearchPapersModule:
         except Exception as e:
             logger.error(f"Error processing research papers query {query_id}: {e}")
             self.database.update_query_status(query_id, 'failed')
-            return False
-    
-    async def search_and_store(self, query_text: str, query_type: str) -> Optional[int]:
+            return False    
+    async def search_and_store(self, query_text: str) -> Optional[int]:
         """
         Convenience method to add a query and immediately process it.
         
         Args:
             query_text: Search query string
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             Query ID if successful, None otherwise
         """
         try:
             # Add query to database
-            query_id = self.database.add_query(query_text, query_type)
+            query_id = self.database.add_query(query_text)
             
             # Process immediately
             success = await self.process_query(query_id)

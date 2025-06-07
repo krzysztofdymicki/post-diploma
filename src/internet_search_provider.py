@@ -86,15 +86,13 @@ class InternetSearchProvider:
         """
         self.timeout = timeout
         self.max_results = max_results
-        self.delay_between_searches = delay_between_searches
-    
-    def search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
+        self.delay_between_searches = delay_between_searches    
+    def search(self, query: str) -> List[Dict[str, Any]]:
         """
         Perform a search query using DuckDuckGo with aggressive retry mechanism.
         
         Args:
             query: Search query string
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             List of search results with title, url, and snippet
@@ -109,7 +107,7 @@ class InternetSearchProvider:
         
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             try:
-                return self._perform_search(query, query_type)
+                return self._perform_search(query)
                 
             except RatelimitException as e:
                 last_exception = e
@@ -134,15 +132,13 @@ class InternetSearchProvider:
                     break
                     
         # If we get here, all retries failed
-        raise DuckDuckGoSearchException(f"Search failed after {max_retries + 1} attempts: {last_exception}")
-    
-    def _perform_search(self, query: str, query_type: str = "tools") -> List[Dict[str, Any]]:
+        raise DuckDuckGoSearchException(f"Search failed after {max_retries + 1} attempts: {last_exception}")    
+    def _perform_search(self, query: str) -> List[Dict[str, Any]]:
         """
         Perform the actual search operation (internal method).
         
         Args:
             query: Search query string  
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             List of search results with title, url, and snippet
@@ -150,7 +146,7 @@ class InternetSearchProvider:
         Raises:
             RatelimitException, TimeoutException, DuckDuckGoSearchException: Various search errors
         """
-        logger.info(f"Searching for: '{query}' (type: {query_type})")
+        logger.info(f"Searching for: '{query}'")
         
         # Initialize DDGS with timeout
         ddgs = DDGS(timeout=self.timeout)
@@ -216,22 +212,20 @@ class InternetSearchModule:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Get query details from database
+        try:            # Get query details from database
             query_data = self.database.get_query(query_id)
             if not query_data:
                 logger.error(f"Query {query_id} not found in database")
                 return False
                 
             query_text = query_data['query_text']
-            query_type = query_data['query_type']
             
             # Update status to processing
             self.database.update_query_status(query_id, 'processing')
             logger.info(f"Processing query {query_id}: '{query_text}'")
             
             # Perform search
-            search_results = self.search_engine.search(query_text, query_type)
+            search_results = self.search_engine.search(query_text)
               # Store results in database
             for result in search_results:
                 self.database.add_query_result(
@@ -294,22 +288,20 @@ class InternetSearchModule:
                 stats['failed'] += 1
                 
         logger.info(f"Processing complete: {stats['successful']} successful, {stats['failed']} failed")
-        return stats
-    
-    def search_and_store(self, query_text: str, query_type: str) -> Optional[int]:
+        return stats    
+    def search_and_store(self, query_text: str) -> Optional[int]:
         """
         Convenience method to add a query and immediately process it.
         
         Args:
             query_text: Search query string
-            query_type: Type of query ("tools" or "applications")
             
         Returns:
             Query ID if successful, None otherwise
         """
         try:
             # Add query to database
-            query_id = self.database.add_query(query_text, query_type)
+            query_id = self.database.add_query(query_text)
             
             # Process immediately
             success = self.process_query(query_id)

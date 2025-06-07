@@ -21,7 +21,7 @@ class Database:
             # Default to data directory
             db_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
             os.makedirs(db_dir, exist_ok=True)
-            db_path = os.path.join(db_dir, 'sentiment_research.db')
+            db_path = os.path.join(db_dir, 'research_db.db')
         self.db_path = db_path
         self._connection = None
         self.init_database()
@@ -31,7 +31,7 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
-    
+
     def init_database(self):
         """Create database tables if they don't exist."""
         with self.get_connection() as conn:
@@ -39,7 +39,6 @@ class Database:
                 CREATE TABLE IF NOT EXISTS queries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     query_text TEXT NOT NULL,
-                    query_type TEXT NOT NULL CHECK (query_type IN ('tools', 'applications')),
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,                    results_count INTEGER DEFAULT 0
@@ -60,8 +59,7 @@ class Database:
                     source_identifier TEXT,
                     pdf_url TEXT,
                     pdf_data TEXT,
-                    found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (query_id) REFERENCES queries (id)
+                    found_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,                    FOREIGN KEY (query_id) REFERENCES queries (id)
                 )
             ''')
             
@@ -78,6 +76,24 @@ class Database:
                     title_extracted TEXT,
                     content_length INTEGER,
                     error_message TEXT,
+                    FOREIGN KEY (query_result_id) REFERENCES query_results (id)
+                )
+            ''')
+            
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS query_result_assessments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query_result_id INTEGER NOT NULL,
+                    original_query_text TEXT NOT NULL,
+                    assessment_prompt TEXT,
+                    llm_response_raw TEXT,
+                    relevance_score INTEGER CHECK (relevance_score BETWEEN 1 AND 5),
+                    credibility_score INTEGER CHECK (credibility_score BETWEEN 1 AND 5),
+                    solidity_score INTEGER CHECK (solidity_score BETWEEN 1 AND 5),
+                    overall_usefulness_score INTEGER CHECK (overall_usefulness_score BETWEEN 1 AND 5),
+                    llm_justification TEXT,
+                    error_message TEXT,
+                    assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (query_result_id) REFERENCES query_results (id)
                 )
             ''')
@@ -138,16 +154,13 @@ class Database:
         except Exception as e:
             logger.error(f"Source fields migration error: {e}")
 
-    def add_query(self, query_text: str, query_type: str) -> int:
+    def add_query(self, query_text: str) -> int:
         """Add a new search query to the database."""
-        if query_type not in ['tools', 'applications']:
-            raise ValueError("query_type must be 'tools' or 'applications'")
-        
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO queries (query_text, query_type)
-                VALUES (?, ?)
-            ''', (query_text, query_type))
+                INSERT INTO queries (query_text)
+                VALUES (?)
+            ''', (query_text,))
             conn.commit()
             return cursor.lastrowid
     
@@ -165,17 +178,7 @@ class Database:
         
         with self.get_connection() as conn:
             cursor = conn.execute('SELECT * FROM queries WHERE status = ? ORDER BY created_at', (status,))
-            return [dict(row) for row in cursor.fetchall()]
-    
-    def get_queries_by_type(self, query_type: str) -> List[Dict[str, Any]]:
-        """Get all queries of a specific type."""
-        if query_type not in ['tools', 'applications']:
-            raise ValueError("query_type must be 'tools' or 'applications'")
-        
-        with self.get_connection() as conn:
-            cursor = conn.execute('SELECT * FROM queries WHERE query_type = ? ORDER BY created_at', (query_type,))
-            return [dict(row) for row in cursor.fetchall()]
-
+            return [dict(row) for row in cursor.fetchall()]    
     def update_query_status(self, query_id: int, status: str, results_count: int = None) -> bool:
         """Update the status of a query and automatically sync results_count."""
         if status not in ['pending', 'processing', 'completed', 'failed']:
@@ -220,8 +223,7 @@ class Database:
             conn.execute('DROP TABLE IF EXISTS queries')
             logger.info("Dropped all tables")
             
-            # Reset auto-increment counters
-            conn.execute('DELETE FROM sqlite_sequence WHERE name IN ("queries", "query_results", "fetched_content")')
+            # Reset auto-increment counters            conn.execute('DELETE FROM sqlite_sequence WHERE name IN ("queries", "query_results", "fetched_content")')
             logger.info("Reset auto-increment counters")
             
             conn.commit()
@@ -230,82 +232,7 @@ class Database:
         self.init_database()
         logger.info("Database cleared and recreated successfully")
 
-    def get_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive statistics about the database content."""
-        with self.get_connection() as conn:
-            stats = {}
-            
-            # Total queries
-            cursor = conn.execute('SELECT COUNT(*) as total FROM queries')
-            stats['total_queries'] = cursor.fetchone()['total']
-            
-            # Queries by status
-            cursor = conn.execute('''
-                SELECT status, COUNT(*) as count 
-                FROM queries 
-                GROUP BY status
-            ''')
-            stats['queries_by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
-            
-            # Queries by type
-            cursor = conn.execute('''
-                SELECT query_type, COUNT(*) as count 
-                FROM queries 
-                GROUP BY query_type
-            ''')
-            stats['queries_by_type'] = {row['query_type']: row['count'] for row in cursor.fetchall()}
-            
-            # Total query results
-            cursor = conn.execute('SELECT COUNT(*) as total FROM query_results')
-            stats['total_results'] = cursor.fetchone()['total']
-            
-            # Results by source type
-            cursor = conn.execute('''
-                SELECT source_type, COUNT(*) as count 
-                FROM query_results 
-                GROUP BY source_type
-            ''')
-            stats['results_by_source'] = {row['source_type']: row['count'] for row in cursor.fetchall()}
-            
-            # Average results per query (only for queries with results)
-            cursor = conn.execute('''
-                SELECT AVG(result_count) as avg_results
-                FROM (
-                    SELECT query_id, COUNT(*) as result_count
-                    FROM query_results
-                    GROUP BY query_id
-                )
-            ''')
-            avg_result = cursor.fetchone()['avg_results']
-            stats['avg_results_per_query'] = round(avg_result, 2) if avg_result else 0
-            
-            # Total fetched content
-            cursor = conn.execute('SELECT COUNT(*) as total FROM fetched_content')
-            stats['total_fetched_content'] = cursor.fetchone()['total']
-            
-            # Fetched content by status
-            cursor = conn.execute('''
-                SELECT status, COUNT(*) as count 
-                FROM fetched_content 
-                GROUP BY status
-            ''')
-            stats['fetched_content_by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
-            
-            return stats
-
-    def close(self):
-        """Close the database connection if it exists."""
-        if self._connection:
-            self._connection.close()
-            self._connection = None
-    
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - close database connection."""
-        self.close()      # Query Results methods
+    # Query Results methods
     def add_query_result(self, query_id: int, url: str = None, title: str = None, snippet: str = None,
                         position: int = None, domain: str = None, locale: str = None,
                         source_type: str = 'internet', source_identifier: str = None,
@@ -463,14 +390,6 @@ class Database:
             cursor = conn.execute('SELECT COUNT(*) FROM queries')
             stats['total_queries'] = cursor.fetchone()[0]
             
-            # Queries by type
-            cursor = conn.execute('''
-                SELECT query_type, COUNT(*) as count 
-                FROM queries 
-                GROUP BY query_type
-            ''')
-            stats['queries_by_type'] = {row[0]: row[1] for row in cursor.fetchall()}
-            
             # Queries by status
             cursor = conn.execute('''
                 SELECT status, COUNT(*) as count 
@@ -482,15 +401,6 @@ class Database:
             # Total resources
             cursor = conn.execute('SELECT COUNT(*) FROM query_results')
             stats['total_resources'] = cursor.fetchone()[0]
-              # Resources by type (based on associated query type)
-            cursor = conn.execute('''
-                SELECT q.query_type, COUNT(qr.id) as count
-                FROM queries q
-                LEFT JOIN query_results qr ON q.id = qr.query_id
-                WHERE qr.id IS NOT NULL
-                GROUP BY q.query_type
-            ''')
-            stats['resources_by_type'] = {row[0]: row[1] for row in cursor.fetchall()}
             
             # Resources by source type (more useful for current workflow)
             cursor = conn.execute('''
@@ -500,8 +410,7 @@ class Database:
                 GROUP BY source_type
             ''')
             stats['resources_by_source'] = {row[0]: row[1] for row in cursor.fetchall()}
-            
-            # Content status statistics
+              # Content status statistics
             cursor = conn.execute('SELECT COUNT(*) FROM fetched_content')
             total_content = cursor.fetchone()[0]
             stats['total_content'] = total_content
@@ -519,7 +428,109 @@ class Database:
             stats['recent_queries_24h'] = cursor.fetchone()[0]
             
             return stats
-    
+
+    # Assessment methods
+    def add_assessment(self, query_result_id: int, original_query_text: str, 
+                      assessment_prompt: str = None, llm_response_raw: str = None,
+                      relevance_score: int = None, credibility_score: int = None,
+                      solidity_score: int = None, overall_usefulness_score: int = None,
+                      llm_justification: str = None, error_message: str = None) -> int:
+        """Add a new quality assessment for a query result."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                INSERT INTO query_result_assessments (
+                    query_result_id, original_query_text, assessment_prompt, llm_response_raw,
+                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                    llm_justification, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                query_result_id, original_query_text, assessment_prompt, llm_response_raw,
+                relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                llm_justification, error_message
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_assessment_by_query_result_id(self, query_result_id: int) -> Optional[Dict[str, Any]]:
+        """Get assessment for a specific query result."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT * FROM query_result_assessments 
+                WHERE query_result_id = ?
+            ''', (query_result_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_unassessed_query_results(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get query results that haven't been assessed yet, with original query text."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT 
+                    qr.id as query_result_id,
+                    qr.query_id,
+                    qr.url,
+                    qr.title,
+                    qr.snippet,
+                    qr.domain,
+                    qr.source_type,
+                    qr.source_identifier,
+                    q.query_text as original_query_text
+                FROM query_results qr
+                JOIN queries q ON qr.query_id = q.id
+                LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                WHERE qra.id IS NULL
+                ORDER BY qr.found_at DESC
+                LIMIT ?
+            ''', (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_all_assessments(self) -> List[Dict[str, Any]]:
+        """Get all quality assessments with related query result data."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT 
+                    qra.*,
+                    qr.url,
+                    qr.title,
+                    qr.snippet,
+                    qr.domain,
+                    qr.source_type
+                FROM query_result_assessments qra
+                JOIN query_results qr ON qra.query_result_id = qr.id
+                ORDER BY qra.assessed_at DESC
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_assessments_by_score_range(self, min_usefulness: int = 3, max_usefulness: int = 5) -> List[Dict[str, Any]]:
+        """Get assessments within a specific usefulness score range."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT 
+                    qra.*,
+                    qr.url,
+                    qr.title,
+                    qr.snippet,
+                    qr.domain,
+                    qr.source_type
+                FROM query_result_assessments qra
+                JOIN query_results qr ON qra.query_result_id = qr.id
+                WHERE qra.overall_usefulness_score BETWEEN ? AND ?
+                ORDER BY qra.overall_usefulness_score DESC, qra.assessed_at DESC
+            ''', (min_usefulness, max_usefulness))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def count_assessments_by_score(self) -> Dict[str, int]:
+        """Get count of assessments by overall usefulness score."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT overall_usefulness_score, COUNT(*) as count 
+                FROM query_result_assessments 
+                WHERE overall_usefulness_score IS NOT NULL
+                GROUP BY overall_usefulness_score
+                ORDER BY overall_usefulness_score DESC
+            ''')
+            return {f"score_{row[0]}": row[1] for row in cursor.fetchall()}
+
     def close(self):
         """Close the database connection if it exists."""
         if self._connection:

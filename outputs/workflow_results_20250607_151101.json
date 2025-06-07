@@ -1,0 +1,18 @@
+{
+  "total_queries": 2,
+  "internet_results": {
+    "sentiment analysis tools features": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "best sentiment analysis software": {
+      "query_id": 2,
+      "status": "success"
+    }
+  },
+  "papers_results": {},
+  "errors": [],
+  "start_time": "2025-06-07T15:10:59.523067",
+  "topic": "sentiment analysis tools",
+  "end_time": "2025-06-07T15:11:01.208856"
+}

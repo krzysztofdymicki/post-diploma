@@ -1,0 +1,14 @@
+{
+  "total_queries": 1,
+  "internet_results": {
+    "sentiment analysis tools features": {
+      "query_id": 1,
+      "status": "success"
+    }
+  },
+  "papers_results": {},
+  "errors": [],
+  "start_time": "2025-06-07T15:20:38.317291",
+  "topic": "sentiment analysis tools",
+  "end_time": "2025-06-07T15:20:39.684632"
+}
