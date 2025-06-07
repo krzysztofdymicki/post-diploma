@@ -1,0 +1,62 @@
+{
+  "total_queries": 3,
+  "internet_results": {
+    "sentiment analysis tools overview": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "best AI sentiment analysis software": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "natural language processing sentiment analysis platforms": {
+      "query_id": 5,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis tools overview": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "best AI sentiment analysis software": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "natural language processing sentiment analysis platforms": {
+      "query_id": 6,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T17:43:23.188618",
+  "topic": "sentiment analysis tools",
+  "end_time": "2025-06-07T17:43:53.989356",
+  "assessment": {
+    "processed_count": 10,
+    "success_count": 9,
+    "error_count": 1,
+    "errors": [
+      {
+        "query_result_id": 30,
+        "error": "Failed to validate/parse LLM response (attempt 3/3): 1 validation error for AssessmentResponse\n  Invalid JSON: EOF while parsing a string at line 3 column 309 [type=json_invalid, input_value='{\\n  \"credibility_score\"...ls or platforms, making', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/json_invalid"
+      }
+    ],
+    "statistics": {
+      "total_assessments": 10,
+      "score_distribution": {
+        "score_5": 3,
+        "score_4": 6
+      },
+      "high_value_results": 9,
+      "average_scores": {
+        "relevance": 4.44,
+        "credibility": 4.67,
+        "solidity": 4.67,
+        "usefulness": 4.33
+      },
+      "error_count": 1,
+      "error_rate": 10.0
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "total_queries": 2,
+  "internet_results": {
+    "machine learning for disease diagnosis": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "AI in healthcare drug discovery AND development": {
+      "query_id": 3,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "machine learning for disease diagnosis": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "AI in healthcare drug discovery AND development": {
+      "query_id": 4,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T17:29:44.289176",
+  "topic": "machine learning applications in healthcare",
+  "end_time": "2025-06-07T17:29:59.903350",
+  "assessment": {
+    "processed_count": 10,
+    "success_count": 0,
+    "error_count": 10,
+    "errors": [
+      {
+        "query_result_id": 20,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 21,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 22,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 23,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 24,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 25,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 26,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 27,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 28,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      },
+      {
+        "query_result_id": 17,
+        "error": "Unexpected error during assessment (attempt 3/3): Unknown field for Schema: maximum"
+      }
+    ],
+    "statistics": {
+      "total_assessments": 10,
+      "score_distribution": {},
+      "high_value_results": 0,
+      "average_scores": {
+        "relevance": 0.0,
+        "credibility": 0.0,
+        "solidity": 0.0,
+        "usefulness": 0.0
+      },
+      "error_count": 10,
+      "error_rate": 100.0
+    }
+  }
+}

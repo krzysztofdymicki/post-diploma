@@ -76,8 +76,7 @@ class Database:
                     title_extracted TEXT,
                     content_length INTEGER,
                     error_message TEXT,
-                    FOREIGN KEY (query_result_id) REFERENCES query_results (id)
-                )
+                    FOREIGN KEY (query_result_id) REFERENCES query_results (id)                )
             ''')
             
             conn.execute('''
@@ -91,6 +90,7 @@ class Database:
                     credibility_score INTEGER CHECK (credibility_score BETWEEN 1 AND 5),
                     solidity_score INTEGER CHECK (solidity_score BETWEEN 1 AND 5),
                     overall_usefulness_score INTEGER CHECK (overall_usefulness_score BETWEEN 1 AND 5),
+                    weighted_average_score REAL CHECK (weighted_average_score BETWEEN 1.0 AND 5.0),
                     llm_justification TEXT,
                     error_message TEXT,
                     assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -98,7 +98,8 @@ class Database:
                 )
             ''')
             conn.commit()
-              # Migration: Add domain and locale columns if they don't exist
+            
+            # Migration: Add domain and locale columns if they don't exist
             self._migrate_add_domain_locale(conn)
             
             # Migration: Add source_type and source_identifier columns, make url nullable
@@ -200,7 +201,7 @@ class Database:
                 WHERE id = ?            ''', (status, final_results_count, query_id))
             conn.commit()
             return cursor.rowcount > 0
-    
+
     def get_all_queries(self) -> List[Dict[str, Any]]:
         """Get all queries ordered by creation date."""
         with self.get_connection() as conn:
@@ -213,18 +214,23 @@ class Database:
             cursor = conn.execute('DELETE FROM queries WHERE id = ?', (query_id,))
             conn.commit()
             return cursor.rowcount > 0
-    
+
     def clear_database(self):
         """Clear all data from all tables and recreate them with updated schema."""
         with self.get_connection() as conn:
-            # Drop all tables to ensure fresh schema
+            # Drop all tables to ensure fresh schema (in correct order due to foreign keys)
+            conn.execute('DROP TABLE IF EXISTS query_result_assessments')
             conn.execute('DROP TABLE IF EXISTS fetched_content')
             conn.execute('DROP TABLE IF EXISTS query_results') 
             conn.execute('DROP TABLE IF EXISTS queries')
             logger.info("Dropped all tables")
-            
-            # Reset auto-increment counters            conn.execute('DELETE FROM sqlite_sequence WHERE name IN ("queries", "query_results", "fetched_content")')
-            logger.info("Reset auto-increment counters")
+              # Reset auto-increment counters - check if sqlite_sequence exists first
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+            if cursor.fetchone():
+                conn.execute('DELETE FROM sqlite_sequence WHERE name IN ("queries", "query_results", "fetched_content", "query_result_assessments")')
+                logger.info("Reset auto-increment counters")
+            else:
+                logger.info("sqlite_sequence table does not exist, skipping counter reset")
             
             conn.commit()
             
@@ -425,8 +431,7 @@ class Database:
                 SELECT COUNT(*) FROM queries 
                 WHERE created_at >= datetime('now', '-1 day')
             ''')
-            stats['recent_queries_24h'] = cursor.fetchone()[0]
-            
+            stats['recent_queries_24h'] = cursor.fetchone()[0]            
             return stats
 
     # Assessment methods
@@ -434,6 +439,7 @@ class Database:
                       assessment_prompt: str = None, llm_response_raw: str = None,
                       relevance_score: int = None, credibility_score: int = None,
                       solidity_score: int = None, overall_usefulness_score: int = None,
+                      weighted_average_score: float = None,
                       llm_justification: str = None, error_message: str = None) -> int:
         """Add a new quality assessment for a query result."""
         with self.get_connection() as conn:
@@ -441,12 +447,12 @@ class Database:
                 INSERT INTO query_result_assessments (
                     query_result_id, original_query_text, assessment_prompt, llm_response_raw,
                     relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                    llm_justification, error_message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    weighted_average_score, llm_justification, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 query_result_id, original_query_text, assessment_prompt, llm_response_raw,
                 relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                llm_justification, error_message
+                weighted_average_score, llm_justification, error_message
             ))
             conn.commit()
             return cursor.lastrowid
@@ -530,6 +536,18 @@ class Database:
                 ORDER BY overall_usefulness_score DESC
             ''')
             return {f"score_{row[0]}": row[1] for row in cursor.fetchall()}
+
+    def get_latest_topic(self) -> Optional[str]:
+        """Get the most recent topic from queries table."""
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                SELECT query_text 
+                FROM queries 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            ''')
+            result = cursor.fetchone()
+            return result[0] if result else None
 
     def close(self):
         """Close the database connection if it exists."""

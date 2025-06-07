@@ -27,11 +27,20 @@ logger = logging.getLogger(__name__)
 
 class AssessmentResponse(BaseModel):
     """Pydantic model for structured assessment response from LLM."""
-    relevance_score: int = Field(ge=1, le=5, description="Relevance to original query (1-5)")
-    credibility_score: int = Field(ge=1, le=5, description="Source credibility score (1-5)")
-    solidity_score: int = Field(ge=1, le=5, description="Content quality and depth (1-5)")
-    overall_usefulness_score: int = Field(ge=1, le=5, description="Overall usefulness for research (1-5)")
+    relevance_score: int = Field(description="Relevance to original query (1-5)")
+    credibility_score: int = Field(description="Source credibility score (1-5)")
+    solidity_score: int = Field(description="Content quality and depth (1-5)")
+    overall_usefulness_score: int = Field(description="Overall usefulness for research (1-5)")
     llm_justification: str = Field(description="Brief explanation for the assessment")
+
+# Assessment weights configuration
+# Weights for calculating weighted average score (must sum to 1.0)
+ASSESSMENT_WEIGHTS = {
+    'relevance': 0.35,        # Najbardziej istotne - czy wynik odpowiada na zapytanie
+    'credibility': 0.25,      # Ważne dla badań naukowych - wiarygodność źródła  
+    'solidity': 0.20,         # Jakość i głębia treści
+    'overall_usefulness': 0.20 # Ogólna użyteczność (mniejsza waga bo jest podsumowaniem innych)
+}
 
 @dataclass
 class AssessmentResult:
@@ -40,6 +49,7 @@ class AssessmentResult:
     credibility_score: int
     solidity_score: int
     overall_usefulness_score: int
+    weighted_average_score: float
     llm_justification: str
     error_message: Optional[str] = None
 
@@ -54,7 +64,6 @@ class QualityAssessmentModule:
     - Content solidity
     - Overall usefulness for research
     """
-    
     def __init__(self, database: Database, api_key: str = None, model_name: str = "gemini-2.5-flash-preview-05-20"):
         """
         Initialize the quality assessment module.
@@ -66,7 +75,8 @@ class QualityAssessmentModule:
         """
         self.database = database
         self.model_name = model_name
-          # Configure Gemini API
+        
+        # Configure Gemini API
         api_key = api_key or os.getenv('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("Google Gemini API key not provided. Set GEMINI_API_KEY environment variable.")
@@ -219,16 +229,22 @@ Please assess this research result according to the criteria above."""
                     last_error = "Failed to extract AssessmentResponse object from LLM response."
                     logger.error(last_error)
                     if attempt < max_retries - 1: time.sleep(1); continue
-                    break
+                    break                # Calculate weighted average score
+                weighted_avg = self.calculate_weighted_average(
+                    assessment_pydantic.relevance_score,
+                    assessment_pydantic.credibility_score,
+                    assessment_pydantic.solidity_score,
+                    assessment_pydantic.overall_usefulness_score
+                )
 
                 return AssessmentResult(
                     relevance_score=assessment_pydantic.relevance_score,
                     credibility_score=assessment_pydantic.credibility_score,
                     solidity_score=assessment_pydantic.solidity_score,
                     overall_usefulness_score=assessment_pydantic.overall_usefulness_score,
+                    weighted_average_score=weighted_avg,
                     llm_justification=assessment_pydantic.llm_justification,
                 )
-            
             except (json.JSONDecodeError, ValidationError) as e: 
                 last_error = f"Failed to validate/parse LLM response (attempt {attempt + 1}/{max_retries}): {e}"
                 logger.warning(f"{last_error}. Response text: {response.text[:300] if response.text else 'N/A'}...")
@@ -244,19 +260,18 @@ Please assess this research result according to the criteria above."""
                     last_error = f"Google API Error (attempt {attempt + 1}/{max_retries}): {e.message}"
                 else:
                     last_error = f"Unexpected error during assessment (attempt {attempt + 1}/{max_retries}): {e}"
-                
                 logger.error(last_error)
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
-                break 
+                break
         
         error_msg = last_error or "Unknown error during assessment after all retries"
         logger.error(f"All retry attempts failed for result_data: {result_data.get('query_result_id')}. Final error: {error_msg}")
         return AssessmentResult(
             relevance_score=0, credibility_score=0, solidity_score=0,
-            overall_usefulness_score=0, llm_justification="",
-            error_message=error_msg
+            overall_usefulness_score=0, weighted_average_score=0.0,
+            llm_justification="", error_message=error_msg
         )
 
     def save_assessment(self, query_result_id: int, initial_user_query: str, 
@@ -284,6 +299,7 @@ Please assess this research result according to the criteria above."""
             credibility_score=assessment.credibility_score if assessment.credibility_score > 0 else None,
             solidity_score=assessment.solidity_score if assessment.solidity_score > 0 else None,
             overall_usefulness_score=assessment.overall_usefulness_score if assessment.overall_usefulness_score > 0 else None,
+            weighted_average_score=assessment.weighted_average_score if assessment.weighted_average_score > 0 else None,
             llm_justification=assessment.llm_justification,
             error_message=assessment.error_message
         )
@@ -418,6 +434,32 @@ Please assess this research result according to the criteria above."""
         stats['error_rate'] = round(len(error_assessments) / len(all_assessments) * 100, 2) if all_assessments else 0
         
         return stats
+
+    def calculate_weighted_average(self, relevance_score: int, credibility_score: int, 
+                             solidity_score: int, overall_usefulness_score: int) -> float:
+        """
+        Calculate weighted average score based on predefined weights.
+        
+        Args:
+            relevance_score: Relevance to query (1-5)
+            credibility_score: Source credibility (1-5)
+            solidity_score: Content quality (1-5)
+            overall_usefulness_score: Overall usefulness (1-5)
+              Returns:
+            Weighted average score (1.0-5.0)
+        """
+        if not all(1 <= score <= 5 for score in [relevance_score, credibility_score, 
+                                                 solidity_score, overall_usefulness_score]):
+            raise ValueError("All scores must be between 1 and 5")
+        
+        weighted_sum = (
+            relevance_score * ASSESSMENT_WEIGHTS['relevance'] +
+            credibility_score * ASSESSMENT_WEIGHTS['credibility'] +
+            solidity_score * ASSESSMENT_WEIGHTS['solidity'] +
+            overall_usefulness_score * ASSESSMENT_WEIGHTS['overall_usefulness']
+        )
+        
+        return round(weighted_sum, 2)
 
 
 def main():

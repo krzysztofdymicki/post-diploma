@@ -3,24 +3,21 @@
 Main workflow orchestrator for academic research.
 
 This script coordinates the complete research workflow:
-1. Loads generated queries from the outputs/ directory
-2. Executes searches using both internet and re            if resources_by_source:
-                report.append(f"Resources by source type:")
-                for source_type, count in resources_by_source.items():
-                    report.append(f"  • {source_type}: {count}")
-                    
-        except Exception as e:
-            report.append(f"Error retrieving statistics: {e}")roviders
-3. Logs progress and provides comprehensive reporting
+1. Accepts initial user query and generates detailed search queries using AI
+2. Executes searches using both internet and research providers
+3. Runs quality assessment on found results
+4. Logs progress and provides comprehensive reporting
 
 Usage:
-    python main.py [options]
+    python main.py --topic "sentiment analysis applications" [options]
     
 Options:
-    --queries-file: Specific queries JSON file to use (optional)
+    --topic: Initial research topic/query (required for new workflow)
+    --queries-file: Use existing queries JSON file instead of generating new ones
     --internet-only: Only use internet search provider
     --papers-only: Only use research papers provider
     --max-queries: Maximum number of queries to process (optional)
+    --run-assessment: Run quality assessment on unassessed results
 """
 
 import json
@@ -36,6 +33,7 @@ from database import Database
 from internet_search_provider import InternetSearchModule
 from research_papers_provider import ResearchPapersModule
 from quality_assessment_module import QualityAssessmentModule
+from query_agent import generate_queries_programmatically
 
 
 class ResearchWorkflow:
@@ -46,6 +44,7 @@ class ResearchWorkflow:
         self.database = Database(db_path)
         self.internet_provider = InternetSearchModule(db_path)
         self.research_provider = ResearchPapersModule(db_path)
+        self.initial_user_query = None  # Store initial query for all steps
         
         # Setup logging
         self.setup_logging()
@@ -239,13 +238,45 @@ class ResearchWorkflow:
                 status_icon = "✓" if result['status'] == 'success' else "✗"
                 report.append(f"  {status_icon} {query} - {result['status']}")
             report.append("")
-            
-        # Errors
+              # Errors
         if results['errors']:
             report.append("ERRORS:")
             report.append("-" * 10)
             for error in results['errors']:
                 report.append(f"  • {error}")
+            report.append("")
+        
+        # Quality Assessment Results
+        if 'assessment' in results:
+            assessment = results['assessment']
+            report.append("QUALITY ASSESSMENT RESULTS:")
+            report.append("-" * 30)
+            report.append(f"Processed: {assessment.get('processed_count', 0)}")
+            report.append(f"Successful assessments: {assessment.get('success_count', 0)}")
+            report.append(f"Failed assessments: {assessment.get('error_count', 0)}")
+            
+            # Show assessment statistics if available
+            stats = assessment.get('statistics', {})
+            if stats:
+                if 'avg_relevance_score' in stats:
+                    report.append(f"Average relevance score: {stats['avg_relevance_score']:.2f}")
+                    report.append(f"Average credibility score: {stats['avg_credibility_score']:.2f}")
+                    report.append(f"Average usefulness score: {stats['avg_usefulness_score']:.2f}")
+                
+                if stats.get('score_distribution'):
+                    report.append("Score distribution:")
+                    for score_range, count in stats['score_distribution'].items():
+                        report.append(f"  • {score_range}: {count}")
+            
+            # Show assessment errors if any
+            if assessment.get('errors'):
+                error_count = len(assessment['errors'])
+                report.append(f"Assessment errors: {error_count}")
+                for error in assessment['errors'][:3]:  # Show first 3 errors
+                    if isinstance(error, dict) and 'query_result_id' in error:
+                        report.append(f"  • Result ID {error['query_result_id']}: {error.get('error', 'Unknown error')}")
+                    else:
+                        report.append(f"  • {error}")
             report.append("")
         
         # Database statistics
@@ -262,7 +293,6 @@ class ResearchWorkflow:
                 report.append(f"Resources by source:")
                 for source_type, count in resources_by_source.items():
                     report.append(f"  • {source_type}: {count}")
-                    
         except Exception as e:
             report.append(f"Error retrieving statistics: {e}")
             
@@ -282,26 +312,64 @@ class ResearchWorkflow:
             with open(results_file, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
             self.logger.info(f"Results saved to {results_file}")
-        except Exception as e:
-            self.logger.error(f"Error saving results: {e}")            
-    async def run(self, queries_file: Optional[Path] = None,
+        except Exception as e:            self.logger.error(f"Error saving results: {e}")
+            
+    async def run(self, 
+                  topic: Optional[str] = None,
+                  queries_file: Optional[Path] = None,
                   use_internet: bool = True,
                   use_papers: bool = True,
-                  max_queries: Optional[int] = None):
-        """Run the complete workflow."""
+                  max_queries: Optional[int] = None,
+                  pages_to_visit: int = 5,
+                  run_assessment: bool = True,
+                  assessment_batch_size: int = 10):
+        """
+        Run the complete workflow.
+        
+        Args:
+            topic: Initial research topic (for new query generation)
+            queries_file: Path to existing queries file (skips generation)
+            use_internet: Whether to use internet search
+            use_papers: Whether to use papers search  
+            max_queries: Maximum queries to process
+            pages_to_visit: Pages to visit for query generation
+            run_assessment: Whether to run quality assessment after searches
+            assessment_batch_size: Number of results to assess in one batch
+        """
         try:
             # Clear database before starting fresh workflow
             self.logger.info("Clearing database for fresh start...")
             self.database.clear_database()
             self.logger.info("Database cleared successfully")
             
-            # Load queries
-            queries_data = self.load_queries(queries_file)
-            
-            # Execute searches
+            # Generate or load queries
+            if topic and not queries_file:
+                # Generate new queries from topic
+                self.logger.info("Generating queries from initial topic...")
+                queries_data = self.generate_queries_from_topic(topic, pages_to_visit)
+                if not queries_data:
+                    raise Exception("Failed to generate queries from topic")
+            else:
+                # Load existing queries
+                queries_data = self.load_queries(queries_file)
+                # Extract topic from queries data for initial_user_query
+                self.initial_user_query = queries_data.get('topic', 'unknown')
+              # Execute searches
             results = await self.execute_searches(
                 queries_data, use_internet, use_papers, max_queries
             )
+            
+            # Run quality assessment if enabled
+            if run_assessment:
+                self.logger.info("Starting quality assessment on search results...")
+                assessment_results = await self.run_quality_assessment(
+                    initial_user_query=self.initial_user_query,
+                    batch_size=assessment_batch_size
+                )
+                
+                # Add assessment results to main results
+                results['assessment'] = assessment_results
+                self.logger.info("Quality assessment completed")
             
             # Generate and display report
             report = self.generate_report(results)
@@ -319,6 +387,89 @@ class ResearchWorkflow:
             self.logger.error(f"Workflow failed: {e}")
             raise
 
+    def generate_queries_from_topic(self, topic: str, pages_to_visit: int = 5) -> Optional[Dict]:
+        """
+        Generate search queries from initial topic using query_agent.
+        
+        Args:
+            topic: Initial research topic/query
+            pages_to_visit: Number of web pages to visit for exploration
+            
+        Returns:
+            Dictionary with queries data or None if failed
+        """
+        self.logger.info(f"Starting query generation for topic: {topic}")
+        self.initial_user_query = topic  # Store for later use in assessment
+        
+        try:
+            result = generate_queries_programmatically(topic, pages_to_visit)
+            
+            if result.get('success'):
+                self.logger.info(f"Successfully generated {len(result['queries'])} queries")
+                return {
+                    'topic': result['topic'],
+                    'queries': result['queries'],
+                    'queries_file': result.get('queries_file')
+                }
+            else:
+                self.logger.error(f"Query generation failed: {result.get('error', 'Unknown error')}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error in query generation: {e}")
+            return None
+
+    async def run_quality_assessment(self, initial_user_query: str, batch_size: int = 10) -> Dict[str, Any]:
+        """
+        Run quality assessment on unassessed query results.
+        
+        Args:
+            initial_user_query: The original research topic/query
+            batch_size: Number of results to assess in one batch
+            
+        Returns:
+            Dictionary with assessment results and statistics
+        """
+        try:
+            assessment_module = QualityAssessmentModule(self.database)
+            
+            # Get unassessed results count
+            unassessed_count = len(self.database.get_unassessed_query_results())
+            self.logger.info(f"Found {unassessed_count} unassessed results")
+            
+            if unassessed_count == 0:
+                self.logger.info("No unassessed results found - skipping assessment")
+                return {
+                    'processed_count': 0,
+                    'success_count': 0,
+                    'error_count': 0,
+                    'errors': [],
+                    'statistics': {}
+                }
+            
+            # Run batch assessment
+            results = assessment_module.run_assessment_workflow(
+                initial_user_query=initial_user_query,
+                batch_size=batch_size
+            )
+            
+            # Get updated statistics
+            stats = assessment_module.get_assessment_statistics()
+            results['statistics'] = stats or {}
+            
+            self.logger.info(f"Assessment completed: {results['success_count']}/{results['processed_count']} successful")
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Quality assessment failed: {e}")
+            return {
+                'processed_count': 0,
+                'success_count': 0,
+                'error_count': 1,
+                'errors': [{'error': str(e)}],
+                'statistics': {}
+            }
 
 async def main():
     """Main entry point with command line argument parsing."""
@@ -370,6 +521,18 @@ Examples:
         help='Number of results to assess in one batch (default: 10)'
     )
     
+    parser.add_argument(
+        '--topic',
+        type=str,
+        help='Initial research topic/query (for new query generation)'
+    )
+    
+    parser.add_argument(
+        '--skip-assessment',
+        action='store_true',
+        help='Skip automatic quality assessment after searches'
+    )
+    
     args = parser.parse_args()
     
     # Handle assessment workflow separately
@@ -378,8 +541,7 @@ Examples:
     
     # Validate provider selection
     use_internet = not args.papers_only
-    use_papers = not args.internet_only
-    
+    use_papers = not args.internet_only    
     if not use_internet and not use_papers:
         print("Error: Cannot disable both providers")
         return 1
@@ -389,10 +551,13 @@ Examples:
     
     try:
         await workflow.run(
+            topic=args.topic,
             queries_file=args.queries_file,
             use_internet=use_internet,
             use_papers=use_papers,
-            max_queries=args.max_queries
+            max_queries=args.max_queries,
+            run_assessment=not args.skip_assessment,
+            assessment_batch_size=args.assessment_batch_size
         )
         print("\n✓ Workflow completed successfully!")
         return 0
@@ -410,6 +575,14 @@ async def run_assessment_workflow(args):
         db = Database()
         assessment_module = QualityAssessmentModule(db)
         
+        # Get initial user query from database (most recent topic)
+        initial_user_query = db.get_latest_topic()
+        if not initial_user_query:
+            print("❌ No initial query found in database. Run search workflow first.")
+            return 1
+            
+        print(f"Using initial query: '{initial_user_query}'")
+        
         # Get unassessed results count
         unassessed_count = len(db.get_unassessed_query_results())
         print(f"Found {unassessed_count} unassessed results")
@@ -419,6 +592,7 @@ async def run_assessment_workflow(args):
             return 1
               # Run batch assessment
         results = assessment_module.run_assessment_workflow(
+            initial_user_query=initial_user_query,
             batch_size=args.assessment_batch_size
         )
         

@@ -319,6 +319,83 @@ def run_query_generation():
         print(f"❌ Error during query generation: {e}")
         return False
 
+def generate_queries_programmatically(topic: str, pages_to_visit: int = 5) -> Dict[str, Any]:
+    """
+    Generate search queries programmatically without user interaction.
+    
+    Args:
+        topic: The research topic/initial query
+        pages_to_visit: Number of web pages to visit for exploration (default: 5)
+        
+    Returns:
+        Dictionary with 'topic', 'queries', and 'success' keys
+    """
+    try:
+        print(f"🔍 Generating queries for topic: {topic}")
+        print(f"📱 Will visit {pages_to_visit} pages for exploration")
+          # Create requirements dict with all expected fields
+        requirements = {
+            'topic': topic,
+            'pages_to_visit': pages_to_visit,
+            'focus_areas': None,  # No specific focus areas in programmatic mode
+            'source_preferences': None  # No source preferences in programmatic mode
+        }
+          # Generate the prompt
+        prompt = generate_research_prompt(requirements)
+        
+        print("🤖 Starting AI-powered query generation...")
+        
+        # Run the agent
+        response = agent.run(prompt, max_steps=20)
+        
+        # Parse queries from response
+        queries = parse_queries_from_response(response)
+        
+        if queries:
+            print(f"✅ Successfully generated {len(queries)} search queries")
+            
+            # Save queries to a JSON file
+            from datetime import datetime
+            import os
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create outputs directory if it doesn't exist
+            outputs_dir = "outputs"
+            os.makedirs(outputs_dir, exist_ok=True)
+            
+            queries_filename = os.path.join(outputs_dir, f"query_agent_search_queries_{timestamp}.json")
+            
+            try:
+                with open(queries_filename, 'w', encoding='utf-8') as f:
+                    json.dump({"topic": topic, "queries": queries}, f, indent=2, ensure_ascii=False)
+                print(f"💾 Queries saved to: {queries_filename}")
+            except Exception as e:
+                print(f"❌ Error saving queries to file: {e}")
+            
+            return {
+                'topic': topic,
+                'queries': queries,
+                'success': True,
+                'queries_file': queries_filename
+            }
+        else:
+            print("❌ No queries were successfully generated")
+            return {
+                'topic': topic,
+                'queries': [],
+                'success': False,
+                'error': 'No queries extracted from AI response'
+            }
+            
+    except Exception as e:
+        print(f"❌ Error during programmatic query generation: {e}")
+        return {
+            'topic': topic,
+            'queries': [],
+            'success': False,
+            'error': str(e)
+        }
+
 if __name__ == "__main__":
     try:
         # Run the query generation process
