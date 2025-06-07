@@ -1,0 +1,155 @@
+{
+  "total_queries": 18,
+  "internet_results": {
+    "sentiment analysis tools features": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "best sentiment analysis software": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "sentiment analysis tools comparison": {
+      "query_id": 5,
+      "status": "success"
+    },
+    "sentiment analysis API pricing": {
+      "query_id": 7,
+      "status": "success"
+    },
+    "NLP sentiment analysis applications": {
+      "query_id": 9,
+      "status": "success"
+    },
+    "emotion detection tools AI": {
+      "query_id": 11,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 13,
+      "status": "success"
+    },
+    "social media sentiment analysis platforms": {
+      "query_id": 15,
+      "status": "success"
+    },
+    "brand reputation monitoring tools": {
+      "query_id": 17,
+      "status": "success"
+    },
+    "textual data sentiment classification": {
+      "query_id": 19,
+      "status": "success"
+    },
+    "sentiment analysis tools for marketing": {
+      "query_id": 21,
+      "status": "success"
+    },
+    "multilingual sentiment analysis software": {
+      "query_id": 23,
+      "status": "success"
+    },
+    "sentiment analysis use cases business": {
+      "query_id": 25,
+      "status": "success"
+    },
+    "sentiment analysis challenges accuracy": {
+      "query_id": 27,
+      "status": "success"
+    },
+    "open source sentiment analysis tools": {
+      "query_id": 29,
+      "status": "success"
+    },
+    "sentiment analysis customization training": {
+      "query_id": 31,
+      "status": "success"
+    },
+    "sentiment analysis benefits disadvantages": {
+      "query_id": 33,
+      "status": "success"
+    },
+    "real-time sentiment analysis solutions": {
+      "query_id": 35,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis tools features": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "best sentiment analysis software": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "sentiment analysis tools comparison": {
+      "query_id": 6,
+      "status": "success"
+    },
+    "sentiment analysis API pricing": {
+      "query_id": 8,
+      "status": "success"
+    },
+    "NLP sentiment analysis applications": {
+      "query_id": 10,
+      "status": "success"
+    },
+    "emotion detection tools AI": {
+      "query_id": 12,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 14,
+      "status": "success"
+    },
+    "social media sentiment analysis platforms": {
+      "query_id": 16,
+      "status": "success"
+    },
+    "brand reputation monitoring tools": {
+      "query_id": 18,
+      "status": "success"
+    },
+    "textual data sentiment classification": {
+      "query_id": 20,
+      "status": "success"
+    },
+    "sentiment analysis tools for marketing": {
+      "query_id": 22,
+      "status": "success"
+    },
+    "multilingual sentiment analysis software": {
+      "query_id": 24,
+      "status": "success"
+    },
+    "sentiment analysis use cases business": {
+      "query_id": 26,
+      "status": "success"
+    },
+    "sentiment analysis challenges accuracy": {
+      "query_id": 28,
+      "status": "success"
+    },
+    "open source sentiment analysis tools": {
+      "query_id": 30,
+      "status": "success"
+    },
+    "sentiment analysis customization training": {
+      "query_id": 32,
+      "status": "success"
+    },
+    "sentiment analysis benefits disadvantages": {
+      "query_id": 34,
+      "status": "success"
+    },
+    "real-time sentiment analysis solutions": {
+      "query_id": 36,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-06T16:58:31.084669",
+  "topic": "sentiment analysis tools",
+  "end_time": "2025-06-06T17:00:47.312756"
+}

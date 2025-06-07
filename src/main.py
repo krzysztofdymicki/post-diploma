@@ -282,14 +282,18 @@ class ResearchWorkflow:
                 json.dump(results, f, indent=2, ensure_ascii=False)
             self.logger.info(f"Results saved to {results_file}")
         except Exception as e:
-            self.logger.error(f"Error saving results: {e}")
-            
+            self.logger.error(f"Error saving results: {e}")            
     async def run(self, queries_file: Optional[Path] = None,
                   use_internet: bool = True,
                   use_papers: bool = True,
                   max_queries: Optional[int] = None):
         """Run the complete workflow."""
         try:
+            # Clear database before starting fresh workflow
+            self.logger.info("Clearing database for fresh start...")
+            self.database.clear_database()
+            self.logger.info("Database cleared successfully")
+            
             # Load queries
             queries_data = self.load_queries(queries_file)
             
@@ -309,6 +313,8 @@ class ResearchWorkflow:
             return results
             
         except Exception as e:
+            self.logger.error(f"Workflow failed: {e}")
+            raise
             self.logger.error(f"Workflow failed: {e}")
             raise
 

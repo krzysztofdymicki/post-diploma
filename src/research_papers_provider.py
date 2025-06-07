@@ -117,7 +117,7 @@ class ResearchPapersProvider:
     
     def __init__(self,
                  timeout: int = 30,
-                 max_results: int = 10,
+                 max_results: int = 25,  # Increased from 10 to 25 for better proportion
                  delay_between_searches: float = 2.0,
                  semantic_scholar_api_key: Optional[str] = None,
                  use_only_semantic_scholar: bool = False):
@@ -298,11 +298,10 @@ class ResearchPapersModule:
             db_path: Path to database file
             search_config: Configuration for search provider
         """
-        self.database = Database(db_path)
-          # Default search configuration
+        self.database = Database(db_path)        # Default search configuration
         default_config = {
             'timeout': 30,
-            'max_results': 10,
+            'max_results': 25,  # Increased from 10 to 25 for better proportion (80% vs internet)
             'delay_between_searches': 4.0  # Increased from 2.0 to avoid rate limiting
         }
         
@@ -337,9 +336,24 @@ class ResearchPapersModule:
             
             # Perform search
             search_results = await self.search_provider.search(query_text, query_type)
-            
-            # Store results in database with research papers source
+              # Store results in database with research papers source
+            # Filter results: only save if pdf_url is not null and abstract is meaningful
+            valid_results = []
             for result in search_results:
+                pdf_url = result.get('pdf_url')
+                abstract = result.get('abstract', '')
+                
+                # Skip results without PDF URL or with placeholder abstracts
+                if pdf_url is None or not pdf_url.strip():
+                    logger.debug(f"Skipping result without PDF URL: {result.get('title', 'Unknown title')}")
+                    continue
+                    
+                if not abstract or abstract.strip() == '' or 'No abstract available' in abstract:
+                    logger.debug(f"Skipping result without valid abstract: {result.get('title', 'Unknown title')}")
+                    continue
+                
+                valid_results.append(result)
+                
                 # Create URL from DOI if available
                 url = None
                 if result.get('doi') and result['doi'] != 'No DOI available':
@@ -349,20 +363,19 @@ class ResearchPapersModule:
                     query_id=query_id,
                     url=url,
                     title=result.get('title', ''),
-                    snippet=result.get('abstract', ''),
+                    snippet=abstract,
                     position=result.get('position', 0),
                     domain=result.get('source', 'research_papers'),
                     locale='academic',
-                    source_type='mcp_papers',
+                    source_type='paper',  # Changed from 'mcp_papers' to 'paper'
                     source_identifier=result.get('doi', ''),
-                    pdf_url=result.get('pdf_url'),
+                    pdf_url=pdf_url,
                     pdf_data=json.dumps(result.get('pdf_data') or {}),
                 )
-            
-            # Update query status to completed
+              # Update query status to completed
             self.database.update_query_status(query_id, 'completed')
             
-            logger.info(f"Successfully processed research papers query {query_id}: {len(search_results)} results stored")
+            logger.info(f"Successfully processed research papers query {query_id}: {len(valid_results)}/{len(search_results)} valid results stored (filtered out {len(search_results) - len(valid_results)} invalid results)")
             return True
             
         except Exception as e:

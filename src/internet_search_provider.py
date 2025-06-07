@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 class InternetSearchProvider:
     """DuckDuckGo search engine wrapper for sentiment analysis research."""
     
-    def __init__(self, timeout: int = 10, max_results: int = 10, delay_between_searches: float = 1.0):
+    def __init__(self, timeout: int = 10, max_results: int = 3, delay_between_searches: float = 1.0):
         """
         Initialize search engine.
         
@@ -197,7 +197,7 @@ class InternetSearchModule:
         self.database = Database(db_path)        # Default search configuration with more conservative delays
         default_config = {
             'timeout': 10,
-            'max_results': 10,
+            'max_results': 3,  # Reduced from 10 to 3 for better proportion (20% vs research papers)
             'delay_between_searches': 5.0  # Increased to 5 seconds to avoid rate limiting
         }
         

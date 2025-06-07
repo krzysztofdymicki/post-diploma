@@ -56,7 +56,7 @@ class Database:
                     position INTEGER,
                     domain TEXT,
                     locale TEXT,
-                    source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers', 'research_papers')),
+                    source_type TEXT NOT NULL CHECK (source_type IN ('internet', 'mcp_papers', 'research_papers', 'paper')),
                     source_identifier TEXT,
                     pdf_url TEXT,
                     pdf_data TEXT,
@@ -116,7 +116,7 @@ class Database:
             
             if 'source_type' not in columns:
                 # Add source_type column, default existing records to 'internet'
-                conn.execute('ALTER TABLE query_results ADD COLUMN source_type TEXT NOT NULL DEFAULT "internet" CHECK (source_type IN ("internet", "mcp_papers", "research_papers"))')
+                conn.execute('ALTER TABLE query_results ADD COLUMN source_type TEXT NOT NULL DEFAULT "internet" CHECK (source_type IN ("internet", "mcp_papers", "research_papers", "paper"))')
                 logger.info("Added 'source_type' column to query_results table")
             
             if 'source_identifier' not in columns:
@@ -194,8 +194,7 @@ class Database:
             cursor = conn.execute('''
                 UPDATE queries 
                 SET status = ?, results_count = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (status, final_results_count, query_id))
+                WHERE id = ?            ''', (status, final_results_count, query_id))
             conn.commit()
             return cursor.rowcount > 0
     
@@ -212,8 +211,27 @@ class Database:
             conn.commit()
             return cursor.rowcount > 0
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Get basic statistics about queries and results in the database."""
+    def clear_database(self):
+        """Clear all data from all tables and recreate them with updated schema."""
+        with self.get_connection() as conn:
+            # Drop all tables to ensure fresh schema
+            conn.execute('DROP TABLE IF EXISTS fetched_content')
+            conn.execute('DROP TABLE IF EXISTS query_results') 
+            conn.execute('DROP TABLE IF EXISTS queries')
+            logger.info("Dropped all tables")
+            
+            # Reset auto-increment counters
+            conn.execute('DELETE FROM sqlite_sequence WHERE name IN ("queries", "query_results", "fetched_content")')
+            logger.info("Reset auto-increment counters")
+            
+            conn.commit()
+            
+        # Recreate tables with fresh schema
+        self.init_database()
+        logger.info("Database cleared and recreated successfully")
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive statistics about the database content."""
         with self.get_connection() as conn:
             stats = {}
             
@@ -221,26 +239,35 @@ class Database:
             cursor = conn.execute('SELECT COUNT(*) as total FROM queries')
             stats['total_queries'] = cursor.fetchone()['total']
             
-            # By status
+            # Queries by status
             cursor = conn.execute('''
                 SELECT status, COUNT(*) as count 
                 FROM queries 
                 GROUP BY status
             ''')
-            stats['by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
+            stats['queries_by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
             
-            # By type
+            # Queries by type
             cursor = conn.execute('''
                 SELECT query_type, COUNT(*) as count 
                 FROM queries 
                 GROUP BY query_type
             ''')
-            stats['by_type'] = {row['query_type']: row['count'] for row in cursor.fetchall()}
+            stats['queries_by_type'] = {row['query_type']: row['count'] for row in cursor.fetchall()}
             
-            # Query results statistics
+            # Total query results
             cursor = conn.execute('SELECT COUNT(*) as total FROM query_results')
             stats['total_results'] = cursor.fetchone()['total']
-              # Average results per query (only for queries with results)
+            
+            # Results by source type
+            cursor = conn.execute('''
+                SELECT source_type, COUNT(*) as count 
+                FROM query_results 
+                GROUP BY source_type
+            ''')
+            stats['results_by_source'] = {row['source_type']: row['count'] for row in cursor.fetchall()}
+            
+            # Average results per query (only for queries with results)
             cursor = conn.execute('''
                 SELECT AVG(result_count) as avg_results
                 FROM (
@@ -252,8 +279,20 @@ class Database:
             avg_result = cursor.fetchone()['avg_results']
             stats['avg_results_per_query'] = round(avg_result, 2) if avg_result else 0
             
+            # Total fetched content
+            cursor = conn.execute('SELECT COUNT(*) as total FROM fetched_content')
+            stats['total_fetched_content'] = cursor.fetchone()['total']
+            
+            # Fetched content by status
+            cursor = conn.execute('''
+                SELECT status, COUNT(*) as count 
+                FROM fetched_content 
+                GROUP BY status
+            ''')
+            stats['fetched_content_by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
+            
             return stats
-    
+
     def close(self):
         """Close the database connection if it exists."""
         if self._connection:
@@ -271,10 +310,9 @@ class Database:
                         position: int = None, domain: str = None, locale: str = None,
                         source_type: str = 'internet', source_identifier: str = None,
                         pdf_url: str = None, pdf_data: str = None) -> int:
-        """Add a new search result for a query and auto-update results_count."""
-        # Validate source_type
-        if source_type not in ['internet', 'mcp_papers', 'research_papers']:
-            raise ValueError("source_type must be 'internet', 'mcp_papers', or 'research_papers'")
+        """Add a new search result for a query and auto-update results_count."""        # Validate source_type
+        if source_type not in ['internet', 'mcp_papers', 'research_papers', 'paper']:
+            raise ValueError("source_type must be 'internet', 'mcp_papers', 'research_papers', or 'paper'")
             
         with self.get_connection() as conn:
             cursor = conn.execute('''
