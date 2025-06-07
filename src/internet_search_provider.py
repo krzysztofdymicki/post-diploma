@@ -288,20 +288,22 @@ class InternetSearchModule:
                 stats['failed'] += 1
                 
         logger.info(f"Processing complete: {stats['successful']} successful, {stats['failed']} failed")
-        return stats    
-    def search_and_store(self, query_text: str) -> Optional[int]:
+        return stats
+    
+    def search_and_store(self, query_text: str, original_user_query: str = None) -> Optional[int]:
         """
         Convenience method to add a query and immediately process it.
         
         Args:
             query_text: Search query string
+            original_user_query: Original user topic/query
             
         Returns:
             Query ID if successful, None otherwise
         """
         try:
             # Add query to database
-            query_id = self.database.add_query(query_text)
+            query_id = self.database.add_query(query_text, original_user_query)
             
             # Process immediately
             success = self.process_query(query_id)

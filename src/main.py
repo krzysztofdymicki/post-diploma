@@ -145,7 +145,7 @@ class ResearchWorkflow:
             if use_internet:
                 try:
                     self.logger.info(f"  → Internet search...")
-                    query_id = self.internet_provider.search_and_store(query)
+                    query_id = self.internet_provider.search_and_store(query, topic)
                     
                     if query_id:
                         results['internet_results'][query] = {
@@ -176,7 +176,7 @@ class ResearchWorkflow:
                     
                 try:
                     self.logger.info(f"  → Research papers search...")
-                    query_id = await self.research_provider.search_and_store(query)
+                    query_id = await self.research_provider.search_and_store(query, topic)
                     
                     if query_id:
                         results['papers_results'][query] = {
@@ -333,14 +333,13 @@ class ResearchWorkflow:
             use_papers: Whether to use papers search  
             max_queries: Maximum queries to process
             pages_to_visit: Pages to visit for query generation
-            run_assessment: Whether to run quality assessment after searches
-            assessment_batch_size: Number of results to assess in one batch
+            run_assessment: Whether to run quality assessment after searches            assessment_batch_size: Number of results to assess in one batch
         """
         try:
-            # Clear database before starting fresh workflow
+            # Note: Database clearing is now optional via --clear-db flag            # Clear database to ensure fresh start with new logic
             self.logger.info("Clearing database for fresh start...")
             self.database.clear_database()
-            self.logger.info("Database cleared successfully")
+            self.logger.info("✓ Database cleared")
             
             # Generate or load queries
             if topic and not queries_file:
@@ -419,13 +418,13 @@ class ResearchWorkflow:
             self.logger.error(f"Error in query generation: {e}")
             return None
 
-    async def run_quality_assessment(self, initial_user_query: str, batch_size: int = 10) -> Dict[str, Any]:
+    async def run_quality_assessment(self, initial_user_query: str, batch_size: Optional[int] = None) -> Dict[str, Any]:
         """
         Run quality assessment on unassessed query results.
         
         Args:
             initial_user_query: The original research topic/query
-            batch_size: Number of results to assess in one batch
+            batch_size: Number of results to assess in one batch (None = assess all unassessed results)
             
         Returns:
             Dictionary with assessment results and statistics
@@ -515,14 +514,23 @@ Examples:
     
     parser.add_argument(
         '--assessment-batch-size',
-        type=int,        default=10,
-        help='Number of results to assess in one batch (default: 10)'
+        type=int,
+        default=None,
+        help='Number of results to assess in one batch (default: all unassessed results)'
     )
     
     parser.add_argument(
         '--topic',
         type=str,
-        help='Initial research topic/query (for new query generation)'    )
+        help='Initial research topic/query (for new query generation)'
+    )
+    
+    parser.add_argument(
+        '--pages',
+        type=int,
+        default=5,
+        help='Number of web pages to visit for query generation (default: 5)'
+    )
     
     parser.add_argument(
         '--skip-assessment',
@@ -565,7 +573,8 @@ Examples:
             use_papers=use_papers,
             max_queries=args.max_queries,
             run_assessment=not args.skip_assessment,
-            assessment_batch_size=args.assessment_batch_size
+            assessment_batch_size=args.assessment_batch_size,
+            pages_to_visit=args.pages
         )
         print("\n✓ Workflow completed successfully!")
         return 0
@@ -582,14 +591,15 @@ async def run_assessment_workflow(args):
     try:
         db = Database()
         assessment_module = QualityAssessmentModule(db)
-        
-        # Get unassessed results count
+          # Get unassessed results count
         unassessed_count = len(db.get_unassessed_query_results())
         print(f"Found {unassessed_count} unassessed results")
         
         if unassessed_count == 0:
             print("No unassessed results found. Run search workflow first.")
-            return 1# Run batch assessment
+            return 1
+            
+        # Run batch assessment
         results = assessment_module.run_assessment_workflow(
             batch_size=args.assessment_batch_size
         )

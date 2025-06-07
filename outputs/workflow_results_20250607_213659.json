@@ -1,0 +1,196 @@
+{
+  "total_queries": 20,
+  "internet_results": {
+    "sentiment analysis applications business": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "sentiment analysis use cases customer feedback": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "brand monitoring sentiment analysis": {
+      "query_id": 5,
+      "status": "success"
+    },
+    "market research sentiment analysis AI": {
+      "query_id": 7,
+      "status": "success"
+    },
+    "customer service sentiment analysis call center": {
+      "query_id": 9,
+      "status": "success"
+    },
+    "product development sentiment analysis reviews": {
+      "query_id": 11,
+      "status": "success"
+    },
+    "social media sentiment analysis reputation": {
+      "query_id": 13,
+      "status": "success"
+    },
+    "sentiment analysis e-commerce finance healthcare": {
+      "query_id": 15,
+      "status": "success"
+    },
+    "NLP machine learning sentiment analysis techniques": {
+      "query_id": 17,
+      "status": "success"
+    },
+    "emotion detection sentiment analysis challenges": {
+      "query_id": 19,
+      "status": "success"
+    },
+    "sentiment analysis benefits data driven insights": {
+      "query_id": 21,
+      "status": "success"
+    },
+    "real-world examples sentiment analysis": {
+      "query_id": 23,
+      "status": "success"
+    },
+    "sentiment analysis industry specific applications": {
+      "query_id": 25,
+      "status": "success"
+    },
+    "sentiment analysis academic review": {
+      "query_id": 27,
+      "status": "success"
+    },
+    "sentiment analysis product reviews AND ratings": {
+      "query_id": 29,
+      "status": "success"
+    },
+    "sentiment analysis customer experience OR CX": {
+      "query_id": 31,
+      "status": "success"
+    },
+    "sentiment analysis social listening tools": {
+      "query_id": 33,
+      "status": "success"
+    },
+    "sentiment analysis challenges sarcasm slang": {
+      "query_id": 35,
+      "status": "success"
+    },
+    "AI powered sentiment analysis business growth": {
+      "query_id": 37,
+      "status": "success"
+    },
+    "sentiment analysis future trends": {
+      "query_id": 39,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis applications business": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "sentiment analysis use cases customer feedback": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "brand monitoring sentiment analysis": {
+      "query_id": 6,
+      "status": "success"
+    },
+    "market research sentiment analysis AI": {
+      "query_id": 8,
+      "status": "success"
+    },
+    "customer service sentiment analysis call center": {
+      "query_id": 10,
+      "status": "success"
+    },
+    "product development sentiment analysis reviews": {
+      "query_id": 12,
+      "status": "success"
+    },
+    "social media sentiment analysis reputation": {
+      "query_id": 14,
+      "status": "success"
+    },
+    "sentiment analysis e-commerce finance healthcare": {
+      "query_id": 16,
+      "status": "success"
+    },
+    "NLP machine learning sentiment analysis techniques": {
+      "query_id": 18,
+      "status": "success"
+    },
+    "emotion detection sentiment analysis challenges": {
+      "query_id": 20,
+      "status": "success"
+    },
+    "sentiment analysis benefits data driven insights": {
+      "query_id": 22,
+      "status": "success"
+    },
+    "real-world examples sentiment analysis": {
+      "query_id": 24,
+      "status": "success"
+    },
+    "sentiment analysis industry specific applications": {
+      "query_id": 26,
+      "status": "success"
+    },
+    "sentiment analysis academic review": {
+      "query_id": 28,
+      "status": "success"
+    },
+    "sentiment analysis product reviews AND ratings": {
+      "query_id": 30,
+      "status": "success"
+    },
+    "sentiment analysis customer experience OR CX": {
+      "query_id": 32,
+      "status": "success"
+    },
+    "sentiment analysis social listening tools": {
+      "query_id": 34,
+      "status": "success"
+    },
+    "sentiment analysis challenges sarcasm slang": {
+      "query_id": 36,
+      "status": "success"
+    },
+    "AI powered sentiment analysis business growth": {
+      "query_id": 38,
+      "status": "success"
+    },
+    "sentiment analysis future trends": {
+      "query_id": 40,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T21:32:32.353316",
+  "topic": "sentiment analysis applications/use-cases in the world, review",
+  "end_time": "2025-06-07T21:35:50.800292",
+  "assessment": {
+    "processed_count": 10,
+    "success_count": 10,
+    "error_count": 0,
+    "errors": [],
+    "statistics": {
+      "total_assessments": 10,
+      "score_distribution": {
+        "score_5": 3,
+        "score_4": 1,
+        "score_3": 1,
+        "score_2": 3,
+        "score_1": 2
+      },
+      "high_value_results": 4,
+      "average_scores": {
+        "relevance": 3.1,
+        "credibility": 0.0,
+        "solidity": 4.3,
+        "usefulness": 3.0
+      },
+      "error_count": 0,
+      "error_rate": 0.0
+    }
+  }
+}

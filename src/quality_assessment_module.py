@@ -83,11 +83,10 @@ class QualityAssessmentModule:
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name)
-        
-        # Configuration for structured output
+          # Configuration for structured output
         self.generation_config = genai.types.GenerationConfig(
-            temperature=0.3,  # Lower temperature for more consistent assessments
-            max_output_tokens=1000,
+            temperature=0.2,  # Lower temperature for more consistent assessments
+            max_output_tokens=3000,  # Increased from 1000 to handle longer responses
             response_mime_type="application/json",
             response_schema=AssessmentResponse
         )
@@ -192,10 +191,17 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
                 )
                 
                 if not response.parts:
-                    finish_reason_val = response.candidates[0].finish_reason if response.candidates and response.candidates[0].finish_reason else genai.types.FinishReason.UNKNOWN
+                    finish_reason_val = response.candidates[0].finish_reason if response.candidates and response.candidates[0].finish_reason else "UNKNOWN"
                     safety_ratings_val = response.candidates[0].safety_ratings if response.candidates and response.candidates[0].safety_ratings else []
                     
-                    if finish_reason_val == genai.types.FinishReason.SAFETY:
+                    # Handle MAX_TOKENS finish reason by increasing max_output_tokens
+                    if str(finish_reason_val) == "MAX_TOKENS" or finish_reason_val == 2:
+                        error_msg = f"Content generation stopped due to MAX_TOKENS limit. Consider increasing max_output_tokens in generation_config."
+                        logger.warning(error_msg)
+                        last_error = error_msg
+                        if attempt < max_retries - 1: time.sleep(1); continue
+                        break
+                    elif str(finish_reason_val) == "SAFETY" or finish_reason_val == 3:
                         error_msg = f"Content generation stopped due to safety reasons: {safety_ratings_val}"
                         logger.error(error_msg)
                         last_error = error_msg
@@ -312,18 +318,18 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
             error_message=assessment.error_message
         )
 
-    def run_assessment_workflow(self, batch_size: int = 10, delay_between_calls: float = 1.0) -> Dict[str, Any]:
+    def run_assessment_workflow(self, batch_size: Optional[int] = None, delay_between_calls: float = 1.0) -> Dict[str, Any]:
         """
         Run the complete assessment workflow on unassessed results.
         
         Args:
-            batch_size: Number of results to process in this run
+            batch_size: Number of results to process in this run (None = process all unassessed results)
             delay_between_calls: Delay in seconds between API calls to avoid rate limits
             
         Returns:
             Dictionary with workflow statistics
         """
-        logger.info(f"Starting quality assessment workflow (batch_size: {batch_size})")
+        logger.info(f"Starting quality assessment workflow (batch_size: {batch_size or 'ALL'})")
         
         unassessed_results = self.database.get_unassessed_query_results(limit=batch_size)
         
@@ -506,7 +512,7 @@ def main():
     
     import argparse
     parser = argparse.ArgumentParser(description='Run quality assessment on search results')
-    parser.add_argument('--batch-size', type=int, default=10, help='Number of results to process')
+    parser.add_argument('--batch-size', type=int, default=None, help='Number of results to process (default: all unassessed results)')
     parser.add_argument('--delay', type=float, default=1.0, help='Delay between API calls in seconds')
     parser.add_argument('--database-path', type=str, default='data/research_db.db', help='Path to database file')
     

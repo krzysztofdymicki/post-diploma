@@ -39,9 +39,11 @@ class Database:
                 CREATE TABLE IF NOT EXISTS queries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     query_text TEXT NOT NULL,
+                    original_user_query TEXT,
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,                    results_count INTEGER DEFAULT 0
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    results_count INTEGER DEFAULT 0
                 )
             ''')
             
@@ -104,6 +106,9 @@ class Database:
             
             # Migration: Add source_type and source_identifier columns, make url nullable
             self._migrate_add_source_fields(conn)
+            
+            # Migration: Add original_user_query column to queries table
+            self._migrate_add_original_user_query(conn)
 
     def _migrate_add_domain_locale(self, conn):
         """Add domain and locale columns to existing query_results table if they don't exist."""
@@ -155,13 +160,28 @@ class Database:
         except Exception as e:
             logger.error(f"Source fields migration error: {e}")
 
-    def add_query(self, query_text: str) -> int:
+    def _migrate_add_original_user_query(self, conn):
+        """Add original_user_query column to existing queries table if it doesn't exist."""
+        try:
+            # Check if column exists
+            cursor = conn.execute("PRAGMA table_info(queries)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'original_user_query' not in columns:
+                conn.execute('ALTER TABLE queries ADD COLUMN original_user_query TEXT')
+                logger.info("Added 'original_user_query' column to queries table")
+                
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Migration error: {e}")
+
+    def add_query(self, query_text: str, original_user_query: str = None) -> int:
         """Add a new search query to the database."""
         with self.get_connection() as conn:
             cursor = conn.execute('''
-                INSERT INTO queries (query_text)
-                VALUES (?)
-            ''', (query_text,))
+                INSERT INTO queries (query_text, original_user_query)
+                VALUES (?, ?)
+            ''', (query_text, original_user_query))
             conn.commit()
             return cursor.lastrowid
     
@@ -467,27 +487,46 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_unassessed_query_results(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_unassessed_query_results(self, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
         """Get query results that haven't been assessed yet, with original query text."""
         with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT 
-                    qr.id as query_result_id,
-                    qr.query_id,
-                    qr.url,
-                    qr.title,
-                    qr.snippet,
-                    qr.domain,
-                    qr.source_type,
-                    qr.source_identifier,
-                    q.query_text as original_query_text
-                FROM query_results qr
-                JOIN queries q ON qr.query_id = q.id
-                LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
-                WHERE qra.id IS NULL
-                ORDER BY qr.found_at DESC
-                LIMIT ?
-            ''', (limit,))
+            if limit is None:                # Get all unassessed results when limit is None
+                cursor = conn.execute('''
+                    SELECT 
+                        qr.id as query_result_id,
+                        qr.query_id,
+                        qr.url,
+                        qr.title,
+                        qr.snippet,
+                        qr.domain,
+                        qr.source_type,
+                        qr.source_identifier,
+                        COALESCE(q.original_user_query, q.query_text) as original_query_text
+                    FROM query_results qr
+                    JOIN queries q ON qr.query_id = q.id
+                    LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                    WHERE qra.id IS NULL
+                    ORDER BY qr.found_at DESC
+                ''')
+            else:
+                cursor = conn.execute('''
+                    SELECT 
+                        qr.id as query_result_id,
+                        qr.query_id,
+                        qr.url,
+                        qr.title,
+                        qr.snippet,
+                        qr.domain,
+                        qr.source_type,
+                        qr.source_identifier,
+                        COALESCE(q.original_user_query, q.query_text) as original_query_text
+                    FROM query_results qr
+                    JOIN queries q ON qr.query_id = q.id
+                    LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                    WHERE qra.id IS NULL
+                    ORDER BY qr.found_at DESC
+                    LIMIT ?
+                ''', (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
     def get_all_assessments(self) -> List[Dict[str, Any]]:

@@ -1,0 +1,57 @@
+{
+  "total_queries": 3,
+  "internet_results": {
+    "sentiment analysis tools comparison 2024": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "best sentiment analysis software features": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "AI sentiment analysis platforms": {
+      "query_id": 5,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis tools comparison 2024": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "best sentiment analysis software features": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "AI sentiment analysis platforms": {
+      "query_id": 6,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T22:07:18.005947",
+  "topic": "sentiment analysis tools comparison",
+  "end_time": "2025-06-07T22:07:35.260417",
+  "assessment": {
+    "processed_count": 5,
+    "success_count": 5,
+    "error_count": 0,
+    "errors": [],
+    "statistics": {
+      "total_assessments": 5,
+      "score_distribution": {
+        "score_2": 2,
+        "score_1": 3
+      },
+      "high_value_results": 0,
+      "average_scores": {
+        "relevance": 1.4,
+        "credibility": 0.0,
+        "solidity": 4.2,
+        "usefulness": 1.4
+      },
+      "error_count": 0,
+      "error_rate": 0.0
+    }
+  }
+}

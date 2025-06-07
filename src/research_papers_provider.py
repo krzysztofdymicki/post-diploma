@@ -329,19 +329,14 @@ class ResearchPapersModule:
             logger.info(f"Processing research papers query {query_id}: '{query_text}'")
             
             # Perform search
-            search_results = await self.search_provider.search(query_text)
-              # Store results in database with research papers source
-            # Filter results: only save if pdf_url is not null and abstract is meaningful
+            search_results = await self.search_provider.search(query_text)            # Store results in database with research papers source
+            # Filter results: only save if abstract is meaningful
             valid_results = []
             for result in search_results:
                 pdf_url = result.get('pdf_url')
                 abstract = result.get('abstract', '')
                 
-                # Skip results without PDF URL or with placeholder abstracts
-                if pdf_url is None or not pdf_url.strip():
-                    logger.debug(f"Skipping result without PDF URL: {result.get('title', 'Unknown title')}")
-                    continue
-                    
+                # Skip results without valid abstract
                 if not abstract or abstract.strip() == '' or 'No abstract available' in abstract:
                     logger.debug(f"Skipping result without valid abstract: {result.get('title', 'Unknown title')}")
                     continue
@@ -375,20 +370,22 @@ class ResearchPapersModule:
         except Exception as e:
             logger.error(f"Error processing research papers query {query_id}: {e}")
             self.database.update_query_status(query_id, 'failed')
-            return False    
-    async def search_and_store(self, query_text: str) -> Optional[int]:
+            return False
+    
+    async def search_and_store(self, query_text: str, original_user_query: str = None) -> Optional[int]:
         """
         Convenience method to add a query and immediately process it.
         
         Args:
             query_text: Search query string
+            original_user_query: Original user topic/query
             
         Returns:
             Query ID if successful, None otherwise
         """
         try:
             # Add query to database
-            query_id = self.database.add_query(query_text)
+            query_id = self.database.add_query(query_text, original_user_query)
             
             # Process immediately
             success = await self.process_query(query_id)
