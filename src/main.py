@@ -524,13 +524,18 @@ Examples:
     parser.add_argument(
         '--topic',
         type=str,
-        help='Initial research topic/query (for new query generation)'
-    )
+        help='Initial research topic/query (for new query generation)'    )
     
     parser.add_argument(
         '--skip-assessment',
         action='store_true',
         help='Skip automatic quality assessment after searches'
+    )
+    
+    parser.add_argument(
+        '--clear-db',
+        action='store_true',
+        help='Clear database before starting workflow'
     )
     
     args = parser.parse_args()
@@ -545,9 +550,14 @@ Examples:
     if not use_internet and not use_papers:
         print("Error: Cannot disable both providers")
         return 1
-        
-    # Initialize and run search workflow
+          # Initialize and run search workflow
     workflow = ResearchWorkflow()
+    
+    # Clear database if requested
+    if args.clear_db:
+        print("🗑️ Clearing database...")
+        workflow.database.clear_database()
+        print("✓ Database cleared")
     
     try:
         await workflow.run(
