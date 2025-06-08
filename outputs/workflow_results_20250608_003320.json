@@ -1,0 +1,180 @@
+{
+  "total_queries": 18,
+  "internet_results": {
+    "sentiment analysis tools comparison": {
+      "query_id": 1,
+      "status": "success"
+    },
+    "best sentiment analysis software reviews": {
+      "query_id": 3,
+      "status": "success"
+    },
+    "NLP sentiment analysis platforms": {
+      "query_id": 5,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 7,
+      "status": "success"
+    },
+    "social media sentiment analysis tools": {
+      "query_id": 9,
+      "status": "success"
+    },
+    "AI driven sentiment analysis solutions": {
+      "query_id": 11,
+      "status": "success"
+    },
+    "enterprise sentiment analysis features": {
+      "query_id": 13,
+      "status": "success"
+    },
+    "sentiment analysis tools pricing": {
+      "query_id": 15,
+      "status": "success"
+    },
+    "open source sentiment analysis tools": {
+      "query_id": 17,
+      "status": "success"
+    },
+    "sentiment analysis benefits business": {
+      "query_id": 19,
+      "status": "success"
+    },
+    "sentiment analysis challenges accuracy": {
+      "query_id": 21,
+      "status": "success"
+    },
+    "real time sentiment analysis": {
+      "query_id": 23,
+      "status": "success"
+    },
+    "multilingual sentiment analysis tools": {
+      "query_id": 25,
+      "status": "success"
+    },
+    "sentiment analysis for market research": {
+      "query_id": 27,
+      "status": "success"
+    },
+    "sentiment analysis API integration": {
+      "query_id": 29,
+      "status": "success"
+    },
+    "text analytics sentiment tools": {
+      "query_id": 31,
+      "status": "success"
+    },
+    "brand reputation sentiment analysis": {
+      "query_id": 33,
+      "status": "success"
+    },
+    "customer experience sentiment insights": {
+      "query_id": 35,
+      "status": "success"
+    }
+  },
+  "papers_results": {
+    "sentiment analysis tools comparison": {
+      "query_id": 2,
+      "status": "success"
+    },
+    "best sentiment analysis software reviews": {
+      "query_id": 4,
+      "status": "success"
+    },
+    "NLP sentiment analysis platforms": {
+      "query_id": 6,
+      "status": "success"
+    },
+    "customer feedback sentiment analysis": {
+      "query_id": 8,
+      "status": "success"
+    },
+    "social media sentiment analysis tools": {
+      "query_id": 10,
+      "status": "success"
+    },
+    "AI driven sentiment analysis solutions": {
+      "query_id": 12,
+      "status": "success"
+    },
+    "enterprise sentiment analysis features": {
+      "query_id": 14,
+      "status": "success"
+    },
+    "sentiment analysis tools pricing": {
+      "query_id": 16,
+      "status": "success"
+    },
+    "open source sentiment analysis tools": {
+      "query_id": 18,
+      "status": "success"
+    },
+    "sentiment analysis benefits business": {
+      "query_id": 20,
+      "status": "success"
+    },
+    "sentiment analysis challenges accuracy": {
+      "query_id": 22,
+      "status": "success"
+    },
+    "real time sentiment analysis": {
+      "query_id": 24,
+      "status": "success"
+    },
+    "multilingual sentiment analysis tools": {
+      "query_id": 26,
+      "status": "success"
+    },
+    "sentiment analysis for market research": {
+      "query_id": 28,
+      "status": "success"
+    },
+    "sentiment analysis API integration": {
+      "query_id": 30,
+      "status": "success"
+    },
+    "text analytics sentiment tools": {
+      "query_id": 32,
+      "status": "success"
+    },
+    "brand reputation sentiment analysis": {
+      "query_id": 34,
+      "status": "success"
+    },
+    "customer experience sentiment insights": {
+      "query_id": 36,
+      "status": "success"
+    }
+  },
+  "errors": [],
+  "start_time": "2025-06-07T23:43:22.809304",
+  "topic": "sentiment analysis tools in the world, review",
+  "end_time": "2025-06-07T23:46:21.626739",
+  "assessment": {
+    "processed_count": 415,
+    "success_count": 415,
+    "error_count": 0,
+    "errors": [],
+    "statistics": {
+      "total_assessments": 415,
+      "score_distribution": {
+        "score_5": 5,
+        "score_4": 22,
+        "score_3": 10,
+        "score_2": 292,
+        "score_1": 86
+      },
+      "high_value_results": 27,
+      "average_scores": {
+        "relevance": 2.04,
+        "credibility": 3.61,
+        "solidity": 3.86,
+        "usefulness": 1.96
+      },
+      "error_count": 0,
+      "error_rate": 0.0
+    }
+  }
+}
