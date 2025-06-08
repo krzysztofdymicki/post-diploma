@@ -10,9 +10,11 @@ import os
 import json
 import time
 import logging
+import traceback
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field, ValidationError # Added ValidationError
+import sqlite3
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -276,7 +278,8 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
                     last_error = f"Google API Error (attempt {attempt + 1}/{max_retries}): {e.message}"
                 else:
                     last_error = f"Unexpected error during assessment (attempt {attempt + 1}/{max_retries}): {e}"
-                logger.error(last_error)
+                # Log full stack trace for debugging
+                logger.exception("Failed to run assessment workflow")
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
@@ -305,18 +308,23 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
         Returns:
             ID of the created assessment record
         """
-        return self.database.update_or_create_assessment(
-            query_result_id=query_result_id,
-            original_query_text=initial_user_query, # Store the initial user query
-            assessment_prompt=assessment_prompt,
-            llm_response_raw=llm_response_raw,
-            relevance_score=assessment.relevance_score if assessment.relevance_score and assessment.relevance_score > 0 else None,
-            credibility_score=assessment.credibility_score if assessment.credibility_score is not None and assessment.credibility_score > 0 else None,
-            solidity_score=assessment.solidity_score if assessment.solidity_score and assessment.solidity_score > 0 else None,
-            overall_usefulness_score=assessment.overall_usefulness_score if assessment.overall_usefulness_score and assessment.overall_usefulness_score > 0 else None,            weighted_average_score=assessment.weighted_average_score if assessment.weighted_average_score and assessment.weighted_average_score > 0 else None,
-            llm_justification=assessment.llm_justification,
-            error_message=assessment.error_message
-        )
+        try:
+            return self.database.update_or_create_assessment(
+                query_result_id=query_result_id,
+                original_query_text=initial_user_query, # Store the initial user query
+                assessment_prompt=assessment_prompt,
+                llm_response_raw=llm_response_raw,
+                relevance_score=assessment.relevance_score if assessment.relevance_score and assessment.relevance_score > 0 else None,
+                credibility_score=assessment.credibility_score if assessment.credibility_score is not None and assessment.credibility_score > 0 else None,
+                solidity_score=assessment.solidity_score if assessment.solidity_score and assessment.solidity_score > 0 else None,
+                overall_usefulness_score=assessment.overall_usefulness_score if assessment.overall_usefulness_score and assessment.overall_usefulness_score > 0 else None,
+                weighted_average_score=assessment.weighted_average_score if assessment.weighted_average_score and assessment.weighted_average_score > 0 else None,
+                llm_justification=assessment.llm_justification,
+                error_message=assessment.error_message
+            )
+        except sqlite3.DatabaseError as e:
+            logger.error(f"Database error saving assessment for query_result_id {query_result_id}: {e}")
+            return None
 
     def run_assessment_workflow(self, batch_size: Optional[int] = None, delay_between_calls: float = 1.0) -> Dict[str, Any]:
         """
@@ -390,13 +398,15 @@ IMPORTANT: Be critical and conservative in your scoring. If there's any doubt ab
                     time.sleep(delay_between_calls)
                     
             except Exception as e:
+                # Catch unexpected errors during per-result processing
                 error_count += 1
-                error_msg = f"Unexpected error processing result {result_data.get('query_result_id', 'unknown')}: {e}"
+                error_msg = (f"Unexpected error processing result"
+                             f" {result_data.get('query_result_id', 'unknown')}: {e}")
                 errors.append({
                     'query_result_id': result_data.get('query_result_id', 'unknown'),
                     'error': error_msg
                 })
-                logger.error(error_msg)
+                logger.exception(error_msg)
                 processed_count += 1
         
         workflow_stats = {
@@ -550,8 +560,11 @@ def main():
         print(f"\n=== Assessment Statistics ===")
         print(json.dumps(stats, indent=2))
         
-    except Exception as e:
-        logger.error(f"Failed to run assessment workflow: {e}")
+    except Exception:
+        # Log full stack trace for debugging
+        logger.exception("Failed to run assessment workflow")
+        # Print traceback to console
+        traceback.print_exc()
         return 1
     
     return 0

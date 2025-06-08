@@ -274,6 +274,66 @@ class Database:
         # Recreate tables with fresh schema
         self.init_database()
         logger.info("Database cleared and recreated successfully")
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Return basic database stats: total queries, total resources, and resources by source."""
+        with self.get_connection() as conn:
+            total_queries = conn.execute("SELECT COUNT(*) as count FROM queries").fetchone()["count"]
+            total_resources = conn.execute("SELECT COUNT(*) as count FROM query_results").fetchone()["count"]
+            cursor = conn.execute(
+                "SELECT source_type, COUNT(*) as count FROM query_results GROUP BY source_type"
+            )
+            resources_by_source = {row["source_type"]: row["count"] for row in cursor.fetchall()}
+        return {
+            "total_queries": total_queries,
+            "total_resources": total_resources,
+            "resources_by_source": resources_by_source
+        }
+    
+    # --- Assessment and Reporting Methods ---
+    def get_all_assessments(self) -> List[Dict[str, Any]]:
+        """Return all assessment records."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM query_result_assessments")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def count_assessments_by_score(self) -> Dict[str, int]:
+        """
+        Count assessments grouped by weighted_average_score intervals:
+        1-2, 2-3, 3-4, 4-5.
+        """
+        ranges = [(1.0, 2.0), (2.0, 3.0), (3.0, 4.0), (4.0, 5.0)]
+        result = {}
+        with self.get_connection() as conn:
+            for low, high in ranges:
+                label = f"{int(low)}-{int(high)}"
+                if high == 5.0:
+                    cursor = conn.execute(
+                        "SELECT COUNT(*) as count FROM query_result_assessments WHERE weighted_average_score >= ? AND weighted_average_score <= ?",
+                        (low, high)
+                    )
+                else:
+                    cursor = conn.execute(
+                        "SELECT COUNT(*) as count FROM query_result_assessments WHERE weighted_average_score >= ? AND weighted_average_score < ?",
+                        (low, high)
+                    )
+                count = cursor.fetchone()["count"]
+                result[label] = count
+        return result
+
+    def get_assessments_by_score_range(self, min_usefulness: int, max_usefulness: int) -> List[Dict[str, Any]]:
+        """
+        Retrieve assessments with overall_usefulness_score between min and max (inclusive).
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """SELECT * FROM query_result_assessments
+                    WHERE overall_usefulness_score >= ? AND overall_usefulness_score <= ?""",
+                (min_usefulness, max_usefulness)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    # Query Results methods
 
     # Query Results methods
     def add_query_result(self, query_id: int, url: str = None, title: str = None, snippet: str = None,
@@ -465,7 +525,8 @@ class Database:
         Includes query_text from the parent query.
         """
         with self.get_connection() as conn:
-            query = '''
+            # Support unlimited fetch when limit is None
+            base_query = '''
                 SELECT qr.id as query_result_id, qr.url, qr.title, qr.snippet, qr.source_type, qr.pdf_url,
                        q.query_text as original_query_text, q.id as query_id
                 FROM query_results qr
@@ -473,9 +534,11 @@ class Database:
                 LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
                 WHERE qra.id IS NULL OR (qra.id IS NOT NULL AND qra.error_message IS NOT NULL)
                 ORDER BY qr.found_at ASC, qr.id ASC
-                LIMIT ?
             '''
-            cursor = conn.execute(query, (limit,))
+            if limit is not None:
+                cursor = conn.execute(base_query + '\nLIMIT ?', (limit,))
+            else:
+                cursor = conn.execute(base_query)
             return [dict(row) for row in cursor.fetchall()]
 
     def get_results_for_filtering(self, source_type: str) -> List[Dict[str, Any]]:
@@ -513,7 +576,8 @@ class Database:
                 (query_result_id,)
             )
             existing_assessment = cursor.fetchone()
-            current_time = datetime.now()
+            # Format timestamp as ISO string for SQLite DATETIME storage
+            current_time = datetime.now().isoformat()
 
             if existing_assessment and existing_assessment['error_message'] is None and error_message is None:
                 # If an assessment exists and it's not an error, and the new one is not an error,

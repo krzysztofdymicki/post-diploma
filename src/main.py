@@ -27,6 +27,7 @@ import asyncio
 import argparse
 import logging
 from datetime import datetime
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -36,6 +37,8 @@ from research_papers_provider import ResearchPapersModule
 from quality_assessment_module import QualityAssessmentModule
 from result_filtering_module import ResultFilteringModule
 from query_agent import generate_queries_programmatically
+from browsing_agent import ContentExtractionAgent
+from main_part2 import process_filtered_results
 
 
 class ResearchWorkflow:
@@ -316,7 +319,7 @@ class ResearchWorkflow:
             self.logger.info(f"Results saved to {results_file}")
         except Exception as e:            self.logger.error(f"Error saving results: {e}")
             
-    async def run(self, 
+    async def run(self,
                   topic: Optional[str] = None,
                   queries_file: Optional[Path] = None,
                   use_internet: bool = True,
@@ -324,7 +327,10 @@ class ResearchWorkflow:
                   max_queries: Optional[int] = None,
                   pages_to_visit: int = 5,
                   run_assessment: bool = True,
-                  assessment_batch_size: int = 10):
+                  assessment_batch_size: int = 10,
+                  run_fetching: bool = False,
+                  research_filter_percent: float = 10.0,
+                  internet_filter_percent: float = 10.0):
         """
         Run the complete workflow.
         
@@ -540,6 +546,11 @@ Examples:
         action='store_true',
         help='Clear database before starting workflow'
     )
+    parser.add_argument(
+        '--run-fetching',
+        action='store_true',
+        help='Run filtering and internet content fetching after assessment'
+    )
     
     parser.add_argument(
         '--run-filtering',
@@ -595,7 +606,10 @@ Examples:
             max_queries=args.max_queries,
             run_assessment=not args.skip_assessment,
             assessment_batch_size=args.assessment_batch_size,
-            pages_to_visit=args.pages
+            pages_to_visit=args.pages,
+            run_fetching=args.run_fetching,
+            research_filter_percent=args.research_filter_percent,
+            internet_filter_percent=args.internet_filter_percent
         )
         print("\n✓ Workflow completed successfully!")
         return 0
@@ -650,6 +664,21 @@ async def run_filtering_workflow(args):
         # Save filtered results
         output_file = filtering_module.save_filtered_results(filtered_results)
         print(f"\n✅ Filtered results saved to: {output_file}")
+        # --- Now fetch content for internet sources ---
+        print("\n🔗 Fetching content for filtered internet sources...")
+        # Reset any previous fetched_content records
+        db.reset_fetched_content()
+        # Prepare browsing agent
+        from browsing_agent import ContentExtractionAgent
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        llm = ChatGoogleGenerativeAI(model='gemini-2.5-flash-preview-05-20')
+        agent = ContentExtractionAgent(llm)
+        # Fetch only internet sources
+        internet_items = filtered_results.get('internet_sources', [])
+        # Ensure async context
+        import asyncio
+        asyncio.run(process_filtered_results(db, agent, internet_items))
+        print("✅ Content fetching completed for internet sources")
         
         # Show some examples if available
         if filtered_results['research_papers']:

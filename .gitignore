@@ -4,3 +4,4 @@ tests
 .env
 outputs
 logs
+data
