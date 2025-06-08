@@ -18,6 +18,7 @@ Options:
     --papers-only: Only use research papers provider
     --max-queries: Maximum number of queries to process (optional)
     --run-assessment: Run quality assessment on unassessed results
+    --run-filtering: Run result filtering to keep only top-rated results
 """
 
 import json
@@ -33,6 +34,7 @@ from database import Database
 from internet_search_provider import InternetSearchModule
 from research_papers_provider import ResearchPapersModule
 from quality_assessment_module import QualityAssessmentModule
+from result_filtering_module import ResultFilteringModule
 from query_agent import generate_queries_programmatically
 
 
@@ -473,6 +475,8 @@ Examples:
     python main.py --internet-only          # Only internet search
     python main.py --papers-only            # Only research papers
     python main.py --max-queries 5          # Process only first 5 queries
+    python main.py --run-assessment         # Run assessment on unassessed results
+    python main.py --run-filtering          # Filter results to keep top 10% from each source
     python main.py --queries-file outputs/query_agent_search_queries_20250606_155559.json
         """
     )
@@ -537,7 +541,31 @@ Examples:
         help='Clear database before starting workflow'
     )
     
+    parser.add_argument(
+        '--run-filtering',
+        action='store_true',
+        help='Run result filtering to keep only top-rated results'
+    )
+    
+    parser.add_argument(
+        '--research-filter-percent',
+        type=float,
+        default=10.0,
+        help='Percentage of research paper results to keep in filtering (default: 10)'
+    )
+    
+    parser.add_argument(
+        '--internet-filter-percent',
+        type=float,
+        default=10.0,
+        help='Percentage of internet results to keep in filtering (default: 10)'
+    )
+    
     args = parser.parse_args()
+    
+    # Handle filtering workflow separately
+    if args.run_filtering:
+        return await run_filtering_workflow(args)
     
     # Handle assessment workflow separately
     if args.run_assessment:
@@ -574,6 +602,74 @@ Examples:
         
     except Exception as e:
         print(f"\n✗ Workflow failed: {e}")
+        return 1
+
+
+async def run_filtering_workflow(args):
+    """Run result filtering workflow to keep only top-rated results."""
+    print("🔍 Starting Result Filtering Workflow...")
+    
+    try:
+        db = Database()
+        filtering_module = ResultFilteringModule(db)
+        
+        # Show current statistics
+        print("\n📊 Current Database Statistics:")
+        stats = filtering_module.get_filtering_statistics()
+        
+        total_assessed = 0
+        for source_type, source_stats in stats.items():
+            source_name = source_type.replace('_', ' ').title()
+            print(f"\n{source_name}:")
+            print(f"  Total assessed results: {source_stats['total_count']}")
+            if source_stats['total_count'] > 0:
+                print(f"  Average score: {source_stats['avg_score']:.2f}")
+                print(f"  Score range: {source_stats['score_range']}")
+            total_assessed += source_stats['total_count']
+        
+        if total_assessed == 0:
+            print("\nNo assessed results found. Run assessment workflow first.")
+            return 1
+        
+        # Perform filtering
+        print(f"\n🔍 Filtering results...")
+        print(f"Research papers: keeping top {args.research_filter_percent}%")
+        print(f"Internet sources: keeping top {args.internet_filter_percent}%")
+        
+        filtered_results = filtering_module.get_filtered_results(
+            research_percentage=args.research_filter_percent,
+            internet_percentage=args.internet_filter_percent
+        )
+        
+        summary = filtered_results['summary']
+        print(f"\n📈 Filtering Results:")
+        print(f"Research papers: {summary['research_papers_total']} → {summary['research_papers_filtered']}")
+        print(f"Internet sources: {summary['internet_total']} → {summary['internet_filtered']}")
+        print(f"Total filtered results: {summary['total_filtered']}")
+        
+        # Save filtered results
+        output_file = filtering_module.save_filtered_results(filtered_results)
+        print(f"\n✅ Filtered results saved to: {output_file}")
+        
+        # Show some examples if available
+        if filtered_results['research_papers']:
+            print(f"\n📚 Top 3 Research Paper Results:")
+            for i, result in enumerate(filtered_results['research_papers'][:3]):
+                score = result.get('weighted_average_score', 0)
+                title = result.get('title', 'No title')[:60]
+                print(f"  {i+1}. Score: {score:.2f} - {title}...")
+        
+        if filtered_results['internet_sources']:
+            print(f"\n🌐 Top 3 Internet Results:")
+            for i, result in enumerate(filtered_results['internet_sources'][:3]):
+                score = result.get('weighted_average_score', 0)
+                title = result.get('title', 'No title')[:60]
+                print(f"  {i+1}. Score: {score:.2f} - {title}...")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"\n✗ Filtering workflow failed: {e}")
         return 1
 
 

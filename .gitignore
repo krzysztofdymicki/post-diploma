@@ -2,3 +2,5 @@ tests
 .github
 .pytest_cache
 .env
+outputs
+logs
