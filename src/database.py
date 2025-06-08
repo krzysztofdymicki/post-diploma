@@ -635,6 +635,52 @@ class Database:
             result = cursor.fetchone()
             return result[0] if result else None
 
+    def update_or_insert_fetched_content(self, query_result_id: int, kind: str,
+                                     value: Optional[str], error_details: Optional[str]):
+        """Update an existing fetched_content record or insert a new one."""
+        with self.get_connection() as conn:
+            # Get URL for the query_result_id
+            cursor = conn.execute('SELECT url FROM query_results WHERE id = ?', (query_result_id,))
+            qr_row = cursor.fetchone()
+            if not qr_row:
+                logger.error(f"No query_result found for id {query_result_id} when trying to add/update fetched content.")
+                return None 
+            
+            url = qr_row['url']
+
+            status = 'success' if error_details is None else 'failed'
+            content_type = kind # This is the 'kind' from the agent, e.g., "html", "pdf_path"
+            parsed_content = value # This is the HTML content or PDF path
+            
+            # Check if fetched_content record exists
+            cursor = conn.execute('SELECT id FROM fetched_content WHERE query_result_id = ?', (query_result_id,))
+            existing_fc = cursor.fetchone()
+            
+            if existing_fc:
+                fc_id = existing_fc['id']
+                # Update existing record
+                # Preserve existing http_status_code, title_extracted, content_length if not updated by this call
+                # For now, this simplified update focuses on core fields from BrowsingAgent
+                conn.execute('''
+                    UPDATE fetched_content
+                    SET url = ?, status = ?, content_type = ?, parsed_content = ?, 
+                        error_message = ?, fetched_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (url, status, content_type, parsed_content, error_details, fc_id))
+                logger.info(f"Updated fetched_content for query_result_id {query_result_id} (ID: {fc_id}) with kind '{kind}'")
+                conn.commit()
+                return fc_id
+            else:
+                # Insert new record
+                cursor = conn.execute('''
+                    INSERT INTO fetched_content (query_result_id, url, status, content_type, parsed_content, error_message)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (query_result_id, url, status, content_type, parsed_content, error_details))
+                new_id = cursor.lastrowid
+                logger.info(f"Inserted new fetched_content for query_result_id {query_result_id} (ID: {new_id}) with kind '{kind}'")
+                conn.commit()
+                return new_id
+
     def close(self):
         """Close the database connection if it exists."""
         if self._connection:
