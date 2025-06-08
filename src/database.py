@@ -277,9 +277,11 @@ class Database:
                 query_id, url, title, snippet, position, domain, locale,
                 source_type, source_identifier, pdf_url, pdf_data
             ))
-            
+            conn.commit() # Commit insert before updating query count
+            query_result_id = cursor.lastrowid
+
             # Automatically update results_count in queries table
-            cursor = conn.execute('''
+            conn.execute('''
                 UPDATE queries 
                 SET results_count = (
                     SELECT COUNT(*) FROM query_results WHERE query_id = ?
@@ -288,7 +290,7 @@ class Database:
             ''', (query_id, query_id))
             
             conn.commit()
-            return cursor.lastrowid
+            return query_result_id # Return the ID of the newly inserted query_result
     
     def get_query_results_by_query(self, query_id: int) -> List[Dict[str, Any]]:
         """Get all results for a specific query."""
@@ -330,356 +332,193 @@ class Database:
             return deleted_count
 
     # Fetched Content methods
-    def add_fetched_content(self, query_result_id: int, url: str, status: str = 'pending',
-                           content_type: str = None, http_status_code: int = None,
-                           parsed_content: str = None, title_extracted: str = None,
-                           content_length: int = None, error_message: str = None) -> int:
-        """Add a new fetched content record."""
+    def add_or_update_fetched_content(self, query_result_id: int, url: str, status: str,
+                                      content_type: Optional[str] = None,
+                                      http_status_code: Optional[int] = None,
+                                      parsed_content: Optional[str] = None, # Can be HTML or file path for PDF
+                                      title_extracted: Optional[str] = None,
+                                      content_length: Optional[int] = None,
+                                      error_message: Optional[str] = None) -> int:
+        """
+        Adds a new record to fetched_content or updates an existing one based on query_result_id.
+        If content_type is 'pdf_path', parsed_content is expected to be the file path.
+        """
         with self.get_connection() as conn:
-            cursor = conn.execute('''
-                INSERT INTO fetched_content (
-                    query_result_id, url, status, content_type, http_status_code,
-                    parsed_content, title_extracted, content_length, error_message
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (query_result_id, url, status, content_type, http_status_code,
-                  parsed_content, title_extracted, content_length, error_message))
-            conn.commit()
-            return cursor.lastrowid
+            cursor = conn.execute("SELECT id FROM fetched_content WHERE query_result_id = ?", (query_result_id,))
+            existing_record = cursor.fetchone()
 
-    def get_fetched_content(self, content_id: int) -> Optional[Dict[str, Any]]:
-        """Get a single fetched content record by ID."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('SELECT * FROM fetched_content WHERE id = ?', (content_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
+            current_time = datetime.now()
 
-    def get_fetched_content_by_query_result(self, query_result_id: int) -> Optional[Dict[str, Any]]:
-        """Get fetched content for a specific query result."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('SELECT * FROM fetched_content WHERE query_result_id = ?', (query_result_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
-
-    def get_all_fetched_content(self) -> List[Dict[str, Any]]:
-        """Get all fetched content records."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('SELECT * FROM fetched_content ORDER BY fetched_at DESC')
-            return [dict(row) for row in cursor.fetchall()]
-
-    def get_fetched_content_by_status(self, status: str) -> List[Dict[str, Any]]:
-        """Get all fetched content records with specific status."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('SELECT * FROM fetched_content WHERE status = ? ORDER BY fetched_at DESC', (status,))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def update_fetched_content_status(self, content_id: int, status: str, 
-                                     http_status_code: int = None, parsed_content: str = None,
-                                     title_extracted: str = None, content_length: int = None,
-                                     error_message: str = None) -> bool:
-        """Update fetched content status and related fields."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                UPDATE fetched_content 
-                SET status = ?, http_status_code = ?, parsed_content = ?, 
-                    title_extracted = ?, content_length = ?, error_message = ?,
-                    fetched_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (status, http_status_code, parsed_content, title_extracted, 
-                  content_length, error_message, content_id))
-            conn.commit()
-            return cursor.rowcount > 0
-
-    def delete_fetched_content(self, content_id: int) -> bool:
-        """Delete a fetched content record."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('DELETE FROM fetched_content WHERE id = ?', (content_id,))
-            conn.commit()
-            return cursor.rowcount > 0
-
-    def count_fetched_content_by_status(self) -> Dict[str, int]:
-        """Get count of fetched content records by status."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT status, COUNT(*) as count 
-                FROM fetched_content 
-                GROUP BY status
-            ''')
-            return {row[0]: row[1] for row in cursor.fetchall()}
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive database statistics for reporting."""
-        with self.get_connection() as conn:
-            stats = {}
-            
-            # Total queries
-            cursor = conn.execute('SELECT COUNT(*) FROM queries')
-            stats['total_queries'] = cursor.fetchone()[0]
-            
-            # Queries by status
-            cursor = conn.execute('''
-                SELECT status, COUNT(*) as count 
-                FROM queries 
-                GROUP BY status
-            ''')
-            stats['queries_by_status'] = {row[0]: row[1] for row in cursor.fetchall()}
-            
-            # Total resources
-            cursor = conn.execute('SELECT COUNT(*) FROM query_results')
-            stats['total_resources'] = cursor.fetchone()[0]
-            
-            # Resources by source type (more useful for current workflow)
-            cursor = conn.execute('''
-                SELECT source_type, COUNT(*) as count
-                FROM query_results
-                WHERE source_type IS NOT NULL
-                GROUP BY source_type
-            ''')
-            stats['resources_by_source'] = {row[0]: row[1] for row in cursor.fetchall()}
-              # Content status statistics
-            cursor = conn.execute('SELECT COUNT(*) FROM fetched_content')
-            total_content = cursor.fetchone()[0]
-            stats['total_content'] = total_content
-            
-            if total_content > 0:
-                stats['content_by_status'] = self.count_fetched_content_by_status()
+            if existing_record:
+                # Update existing record
+                record_id = existing_record['id']
+                conn.execute('''
+                    UPDATE fetched_content
+                    SET url = ?, status = ?, fetched_at = ?, content_type = ?,
+                        http_status_code = ?, parsed_content = ?, title_extracted = ?,
+                        content_length = ?, error_message = ?
+                    WHERE id = ?
+                ''', (url, status, current_time, content_type, http_status_code,
+                      parsed_content, title_extracted, content_length, error_message, record_id))
+                logger.info(f"Updated fetched_content record for query_result_id {query_result_id}")
             else:
-                stats['content_by_status'] = {}
-                
-            # Recent activity (queries from last 24 hours)
-            cursor = conn.execute('''
-                SELECT COUNT(*) FROM queries 
-                WHERE created_at >= datetime('now', '-1 day')
-            ''')
-            stats['recent_queries_24h'] = cursor.fetchone()[0]            
-            return stats
-
-    # Assessment methods
-    def add_assessment(self, query_result_id: int, original_query_text: str, 
-                      assessment_prompt: str = None, llm_response_raw: str = None,
-                      relevance_score: int = None, credibility_score: int = None,
-                      solidity_score: int = None, overall_usefulness_score: int = None,
-                      weighted_average_score: float = None,
-                      llm_justification: str = None, error_message: str = None) -> int:
-        """Add a new quality assessment for a query result."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                INSERT INTO query_result_assessments (
-                    query_result_id, original_query_text, assessment_prompt, llm_response_raw,
-                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                    weighted_average_score, llm_justification, error_message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                query_result_id, original_query_text, assessment_prompt, llm_response_raw,
-                relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                weighted_average_score, llm_justification, error_message
-            ))
-            conn.commit()
-            return cursor.lastrowid
-
-    def update_or_create_assessment(self, 
-                      query_result_id: int, original_query_text: str, 
-                      assessment_prompt: str, llm_response_raw: str,
-                      relevance_score: int = None, credibility_score: int = None,
-                      solidity_score: int = None, overall_usefulness_score: int = None,
-                      weighted_average_score: float = None,
-                      llm_justification: str = None, error_message: str = None) -> int:
-        """Update existing assessment or create new one if it doesn't exist."""
-        with self.get_connection() as conn:
-            # Check if assessment already exists
-            cursor = conn.execute('''
-                SELECT id FROM query_result_assessments 
-                WHERE query_result_id = ?
-            ''', (query_result_id,))
-            existing = cursor.fetchone()
-            
-            if existing:
-                # Update existing assessment
+                # Insert new record
                 cursor = conn.execute('''
-                    UPDATE query_result_assessments SET
-                        original_query_text = ?, assessment_prompt = ?, llm_response_raw = ?,
-                        relevance_score = ?, credibility_score = ?, solidity_score = ?, 
-                        overall_usefulness_score = ?, weighted_average_score = ?, 
-                        llm_justification = ?, error_message = ?, assessed_at = CURRENT_TIMESTAMP
-                    WHERE query_result_id = ?
-                ''', (
-                    original_query_text, assessment_prompt, llm_response_raw,
-                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                    weighted_average_score, llm_justification, error_message, query_result_id
-                ))
-                conn.commit()
-                return existing[0]
-            else:
-                # Create new assessment
+                    INSERT INTO fetched_content (
+                        query_result_id, url, status, fetched_at, content_type,
+                        http_status_code, parsed_content, title_extracted,
+                        content_length, error_message
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (query_result_id, url, status, current_time, content_type,
+                      http_status_code, parsed_content, title_extracted,
+                      content_length, error_message))
+                record_id = cursor.lastrowid
+                logger.info(f"Added new fetched_content record for query_result_id {query_result_id}, ID: {record_id}")
+            
+            conn.commit()
+            return record_id
+
+    def get_fetched_content_by_result_id(self, query_result_id: int) -> Optional[Dict[str, Any]]:
+        """Get fetched content details for a specific query_result_id."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM fetched_content WHERE query_result_id = ?", (query_result_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def delete_fetched_content(self, fetched_content_id: int) -> bool:
+        """Deletes a specific fetched_content record by its ID."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("DELETE FROM fetched_content WHERE id = ?", (fetched_content_id,))
+            conn.commit()
+            logger.info(f"Deleted fetched_content record with ID {fetched_content_id}. Rows affected: {cursor.rowcount}")
+            return cursor.rowcount > 0
+
+    # --- Assessment Methods ---
+    # ... (existing assessment methods: add_query_result_assessment, get_assessment_by_result_id, etc.) ...
+
+    # --- Combined/Utility Methods ---
+    def get_all_assessed_results(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all query results that have an entry in the query_result_assessments table.
+        This is used for the --skip-filtering option in main_part2.py.
+        Returns a list of query_results records.
+        """
+        with self.get_connection() as conn:
+            # Select all columns from query_results and join with assessments
+            # to ensure we only get results that have been assessed.
+            # We also fetch the weighted_average_score to allow potential sorting/prioritization if needed,
+            # though main_part2 currently processes them as they come.
+            # We only need one assessment per result, so DISTINCT or GROUP BY on qr.id might be good
+            # if a result could somehow have multiple assessments (which it shouldn't by current design).
+            # For simplicity, a simple join is fine if assessments are 1-to-1 with results.
+            cursor = conn.execute('''
+                SELECT qr.*, qra.weighted_average_score
+                FROM query_results qr
+                JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                ORDER BY qr.id ASC  -- Or any other preferred order
+            ''')
+            # The schema of query_results is what main_part2.py expects for its processing loop.
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_unassessed_query_results(self, limit: int = 100, batch_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get query results that have not yet been assessed or have assessments with errors.
+        Includes query_text from the parent query.
+        """
+        with self.get_connection() as conn:
+            query = '''
+                SELECT qr.id as query_result_id, qr.url, qr.title, qr.snippet, qr.source_type, qr.pdf_url,
+                       q.query_text as original_query_text, q.id as query_id
+                FROM query_results qr
+                JOIN queries q ON qr.query_id = q.id
+                LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                WHERE qra.id IS NULL OR (qra.id IS NOT NULL AND qra.error_message IS NOT NULL)
+                ORDER BY qr.found_at ASC, qr.id ASC
+                LIMIT ?
+            '''
+            cursor = conn.execute(query, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_results_for_filtering(self, source_type: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves query results and their best assessment scores for a given source_type,
+        ordered by weighted_average_score descending.
+        Only includes results that have a successful assessment (no error_message).
+        """
+        with self.get_connection() as conn:
+            sql_query = '''
+                SELECT qr.id, qr.url, qr.title, qr.snippet, qr.source_type, qr.pdf_url,
+                       qra.weighted_average_score, qra.relevance_score, qra.credibility_score,
+                       qra.solidity_score, qra.overall_usefulness_score
+                FROM query_results qr
+                JOIN query_result_assessments qra ON qr.id = qra.query_result_id
+                WHERE qr.source_type = ? AND qra.error_message IS NULL AND qra.weighted_average_score IS NOT NULL
+                ORDER BY qra.weighted_average_score DESC, qr.id ASC
+            '''
+            cursor = conn.execute(sql_query, (source_type,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    # ... (any other existing methods like update_or_create_assessment, etc.) ...
+
+    def update_or_create_assessment(
+        self, query_result_id: int, original_query_text: str, assessment_prompt: str,
+        llm_response_raw: str, relevance_score: Optional[int], credibility_score: Optional[int],
+        solidity_score: Optional[int], overall_usefulness_score: Optional[int],
+        weighted_average_score: Optional[float], llm_justification: Optional[str],
+        error_message: Optional[str] = None
+    ) -> int:
+        """Updates an existing assessment or creates a new one if it doesn't exist or had an error."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, error_message FROM query_result_assessments WHERE query_result_id = ?",
+                (query_result_id,)
+            )
+            existing_assessment = cursor.fetchone()
+            current_time = datetime.now()
+
+            if existing_assessment and existing_assessment['error_message'] is None and error_message is None:
+                # If an assessment exists and it's not an error, and the new one is not an error,
+                # we might choose to log and not update, or update if scores are better.
+                # For now, let's assume we always update if called, to reflect latest assessment attempt.
+                logger.info(f"Updating existing successful assessment for query_result_id: {query_result_id}")
+                assessment_id = existing_assessment['id']
+                conn.execute('''
+                    UPDATE query_result_assessments
+                    SET original_query_text = ?, assessment_prompt = ?, llm_response_raw = ?,
+                        relevance_score = ?, credibility_score = ?, solidity_score = ?,
+                        overall_usefulness_score = ?, weighted_average_score = ?,
+                        llm_justification = ?, error_message = ?, assessed_at = ?
+                    WHERE id = ?
+                ''', (original_query_text, assessment_prompt, llm_response_raw, relevance_score,
+                      credibility_score, solidity_score, overall_usefulness_score,
+                      weighted_average_score, llm_justification, error_message, current_time, assessment_id))
+            elif existing_assessment: # Exists, but might have been an error, or new one is an error
+                logger.info(f"Overwriting existing assessment (possibly an error one) for query_result_id: {query_result_id}")
+                assessment_id = existing_assessment['id']
+                conn.execute('''
+                    UPDATE query_result_assessments
+                    SET original_query_text = ?, assessment_prompt = ?, llm_response_raw = ?,
+                        relevance_score = ?, credibility_score = ?, solidity_score = ?,
+                        overall_usefulness_score = ?, weighted_average_score = ?,
+                        llm_justification = ?, error_message = ?, assessed_at = ?
+                    WHERE id = ?
+                ''', (original_query_text, assessment_prompt, llm_response_raw, relevance_score,
+                      credibility_score, solidity_score, overall_usefulness_score,
+                      weighted_average_score, llm_justification, error_message, current_time, assessment_id))
+            else: # No existing assessment
+                logger.info(f"Creating new assessment for query_result_id: {query_result_id}")
                 cursor = conn.execute('''
                     INSERT INTO query_result_assessments (
                         query_result_id, original_query_text, assessment_prompt, llm_response_raw,
                         relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                        weighted_average_score, llm_justification, error_message
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    query_result_id, original_query_text, assessment_prompt, llm_response_raw,
-                    relevance_score, credibility_score, solidity_score, overall_usefulness_score,
-                    weighted_average_score, llm_justification, error_message
-                ))
-                conn.commit()
-                return cursor.lastrowid
-
-    def get_assessment_by_query_result_id(self, query_result_id: int) -> Optional[Dict[str, Any]]:
-        """Get assessment for a specific query result."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT * FROM query_result_assessments 
-                WHERE query_result_id = ?
-            ''', (query_result_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
-
-    def get_unassessed_query_results(self, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-        """Get query results that haven't been assessed yet OR have assessment errors, with original query text."""
-        with self.get_connection() as conn:
-            if limit is None:                # Get all unassessed results when limit is None
-                cursor = conn.execute('''
-                    SELECT 
-                        qr.id as query_result_id,
-                        qr.query_id,
-                        qr.url,
-                        qr.title,
-                        qr.snippet,
-                        qr.domain,
-                        qr.source_type,
-                        qr.source_identifier,
-                        COALESCE(q.original_user_query, q.query_text) as original_query_text
-                    FROM query_results qr
-                    JOIN queries q ON qr.query_id = q.id
-                    LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
-                    WHERE qra.id IS NULL OR qra.error_message IS NOT NULL
-                    ORDER BY qr.found_at DESC
-                ''')
-            else:
-                cursor = conn.execute('''
-                    SELECT 
-                        qr.id as query_result_id,
-                        qr.query_id,
-                        qr.url,
-                        qr.title,
-                        qr.snippet,
-                        qr.domain,
-                        qr.source_type,
-                        qr.source_identifier,
-                        COALESCE(q.original_user_query, q.query_text) as original_query_text                    FROM query_results qr
-                    JOIN queries q ON qr.query_id = q.id
-                    LEFT JOIN query_result_assessments qra ON qr.id = qra.query_result_id
-                    WHERE qra.id IS NULL OR qra.error_message IS NOT NULL
-                    ORDER BY qr.found_at DESC
-                    LIMIT ?
-                ''', (limit,))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def get_all_assessments(self) -> List[Dict[str, Any]]:
-        """Get all quality assessments with related query result data."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT 
-                    qra.*,
-                    qr.url,
-                    qr.title,
-                    qr.snippet,
-                    qr.domain,
-                    qr.source_type
-                FROM query_result_assessments qra
-                JOIN query_results qr ON qra.query_result_id = qr.id
-                ORDER BY qra.assessed_at DESC
-            ''')
-            return [dict(row) for row in cursor.fetchall()]
-
-    def get_assessments_by_score_range(self, min_usefulness: int = 3, max_usefulness: int = 5) -> List[Dict[str, Any]]:
-        """Get assessments within a specific usefulness score range."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT 
-                    qra.*,
-                    qr.url,
-                    qr.title,
-                    qr.snippet,
-                    qr.domain,
-                    qr.source_type
-                FROM query_result_assessments qra
-                JOIN query_results qr ON qra.query_result_id = qr.id
-                WHERE qra.overall_usefulness_score BETWEEN ? AND ?
-                ORDER BY qra.overall_usefulness_score DESC, qra.assessed_at DESC
-            ''', (min_usefulness, max_usefulness))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def count_assessments_by_score(self) -> Dict[str, int]:
-        """Get count of assessments by overall usefulness score."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT overall_usefulness_score, COUNT(*) as count 
-                FROM query_result_assessments 
-                WHERE overall_usefulness_score IS NOT NULL
-                GROUP BY overall_usefulness_score
-                ORDER BY overall_usefulness_score DESC
-            ''')
-            return {f"score_{row[0]}": row[1] for row in cursor.fetchall()}
-
-    def get_latest_topic(self) -> Optional[str]:
-        """Get the most recent topic from queries table."""
-        with self.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT query_text 
-                FROM queries 
-                ORDER BY created_at DESC 
-                LIMIT 1
-            ''')
-            result = cursor.fetchone()
-            return result[0] if result else None
-
-    def update_or_insert_fetched_content(self, query_result_id: int, kind: str,
-                                     value: Optional[str], error_details: Optional[str]):
-        """Update an existing fetched_content record or insert a new one."""
-        with self.get_connection() as conn:
-            # Get URL for the query_result_id
-            cursor = conn.execute('SELECT url FROM query_results WHERE id = ?', (query_result_id,))
-            qr_row = cursor.fetchone()
-            if not qr_row:
-                logger.error(f"No query_result found for id {query_result_id} when trying to add/update fetched content.")
-                return None 
-            
-            url = qr_row['url']
-
-            status = 'success' if error_details is None else 'failed'
-            content_type = kind # This is the 'kind' from the agent, e.g., "html", "pdf_path"
-            parsed_content = value # This is the HTML content or PDF path
-            
-            # Check if fetched_content record exists
-            cursor = conn.execute('SELECT id FROM fetched_content WHERE query_result_id = ?', (query_result_id,))
-            existing_fc = cursor.fetchone()
-            
-            if existing_fc:
-                fc_id = existing_fc['id']
-                # Update existing record
-                # Preserve existing http_status_code, title_extracted, content_length if not updated by this call
-                # For now, this simplified update focuses on core fields from BrowsingAgent
-                conn.execute('''
-                    UPDATE fetched_content
-                    SET url = ?, status = ?, content_type = ?, parsed_content = ?, 
-                        error_message = ?, fetched_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (url, status, content_type, parsed_content, error_details, fc_id))
-                logger.info(f"Updated fetched_content for query_result_id {query_result_id} (ID: {fc_id}) with kind '{kind}'")
-                conn.commit()
-                return fc_id
-            else:
-                # Insert new record
-                cursor = conn.execute('''
-                    INSERT INTO fetched_content (query_result_id, url, status, content_type, parsed_content, error_message)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (query_result_id, url, status, content_type, parsed_content, error_details))
-                new_id = cursor.lastrowid
-                logger.info(f"Inserted new fetched_content for query_result_id {query_result_id} (ID: {new_id}) with kind '{kind}'")
-                conn.commit()
-                return new_id
+                        weighted_average_score, llm_justification, error_message, assessed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (query_result_id, original_query_text, assessment_prompt, llm_response_raw,
+                      relevance_score, credibility_score, solidity_score, overall_usefulness_score,
+                      weighted_average_score, llm_justification, error_message, current_time))
+                assessment_id = cursor.lastrowid
+            conn.commit()
+            return assessment_id
 
     def close(self):
         """Close the database connection if it exists."""

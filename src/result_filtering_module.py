@@ -1,147 +1,140 @@
-#!/usr/bin/env python3
 """
-Result Filtering Module
+Result Filtering Module for Research Workflow
 
-This module filters assessed query results to keep only the top-rated results
-from each source type (research papers and internet sources).
-
-Functionality:
-- Selects top 10% of results from research papers source
-- Selects top 10% of results from internet source
-- Ranks results by weighted average score
-- Provides filtered dataset for further processing
+This module handles filtering of assessed query results to select the top N% 
+of results by source type (internet, paper/research_papers) based on their 
+weighted_average_score from quality assessments.
 """
 
 import logging
+import json
+from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any, Optional
-from database import Database
+
+from src.database import Database
 
 logger = logging.getLogger(__name__)
 
 
 class ResultFilteringModule:
-    """Module for filtering and selecting top-rated query results."""
+    """
+    Handles filtering of assessed query results to get top N% by source type.
+    """
     
-    def __init__(self, database: Database):
+    def __init__(self, db_path: str = None):
+        """Initialize the filtering module with database connection."""
+        self.db = Database(db_path=db_path)
+        logger.info("ResultFilteringModule initialized")
+    
+    def get_top_n_percent_results_by_source(self, source_type: str, percentage: float = 10.0) -> List[Dict[str, Any]]:
         """
-        Initialize the filtering module.
+        Get the top N% of results for a specific source type based on weighted_average_score.
         
         Args:
-            database: Database instance for accessing results
-        """
-        self.database = database
-        
-    def get_assessed_results_by_source(self, source_type: str) -> List[Dict[str, Any]]:
-        """
-        Get all assessed results from a specific source type, ordered by score.
-        
-        Args:
-            source_type: 'paper' or 'internet'
+            source_type: Either 'internet' or 'paper' (or 'research_papers')
+            percentage: Percentage of top results to return (default 10.0)
             
         Returns:
-            List of assessed results ordered by weighted_average_score descending
+            List of filtered results with assessment scores
         """
-        with self.database.get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT 
-                    qra.*,
-                    qr.url,
-                    qr.title,
-                    qr.snippet,
-                    qr.domain,
-                    qr.source_type,
-                    qr.source_identifier,
-                    qr.found_at
-                FROM query_result_assessments qra
-                JOIN query_results qr ON qra.query_result_id = qr.id
-                WHERE qr.source_type = ? 
-                    AND qra.weighted_average_score IS NOT NULL 
-                    AND qra.error_message IS NULL
-                ORDER BY qra.weighted_average_score DESC, qra.assessed_at DESC            ''', (source_type,))
-            
-            return [dict(row) for row in cursor.fetchall()]
-            
-    def filter_top_percentage(self, results: List[Dict[str, Any]], percentage: float = 10.0) -> List[Dict[str, Any]]:
-        """
-        Filter results to keep only top percentage by score.
+        logger.info(f"Filtering top {percentage}% results for source_type: {source_type}")
         
-        Args:
-            results: List of assessed results
-            percentage: Percentage of top results to keep (default: 10%)
-            
-        Returns:
-            Filtered list containing top percentage of results
-        """
-        if not results:
+        # Normalize source_type (handle both 'paper' and 'research_papers')
+        if source_type in ['research_papers', 'paper']:
+            source_type = 'paper'
+        elif source_type != 'internet':
+            logger.warning(f"Unknown source_type: {source_type}. Proceeding anyway.")
+        
+        # Get all assessed results for this source type, ordered by score DESC
+        all_results = self.db.get_results_for_filtering(source_type)
+        
+        if not all_results:
+            logger.warning(f"No assessed results found for source_type: {source_type}")
             return []
-            
-        # Calculate number of results to keep
-        total_count = len(results)
-        keep_count = max(1, int(total_count * (percentage / 100.0)))
         
-        logger.info(f"Filtering {total_count} results to keep top {keep_count} ({percentage}%)")
-          # Results are already sorted by score, so just take the top ones
-        return results[:keep_count]
+        logger.info(f"Found {len(all_results)} assessed results for source_type: {source_type}")
         
-    def get_filtered_results(self, research_percentage: float = 10.0, 
-                           internet_percentage: float = 10.0) -> Dict[str, List[Dict[str, Any]]]:
+        # Calculate how many results to return (top N%)
+        total_count = len(all_results)
+        top_count = max(1, int(total_count * percentage / 100))  # At least 1 result
+        
+        # Take the top N% results (already ordered by weighted_average_score DESC)
+        filtered_results = all_results[:top_count]
+        
+        logger.info(f"Filtered to top {top_count} results ({percentage}% of {total_count})")
+        
+        return filtered_results
+    
+    def filter_and_save_results(self, 
+                               internet_percentage: float = 10.0,
+                               research_percentage: float = 10.0,
+                               output_file: Optional[str] = None) -> str:
         """
-        Get filtered results from both source types.
+        Filter results for both internet and research sources and save to JSON file.
         
         Args:
-            research_percentage: Percentage of research paper results to keep
-            internet_percentage: Percentage of internet results to keep
+            internet_percentage: Percentage of top internet results to keep
+            research_percentage: Percentage of top research results to keep
+            output_file: Optional output file path. If None, generates timestamp-based name.
             
         Returns:
-            Dictionary with 'research_papers' and 'internet' keys containing filtered results
+            Path to the saved results file
         """
-        logger.info("Starting result filtering process...")
-          # Get results from research papers
-        research_results = self.get_assessed_results_by_source('paper')
-        filtered_research = self.filter_top_percentage(research_results, research_percentage)
+        logger.info(f"Starting filtering: {internet_percentage}% internet, {research_percentage}% research")
         
-        logger.info(f"Research papers: {len(research_results)} total → {len(filtered_research)} filtered ({research_percentage}%)")
+        # Filter internet results
+        internet_results = self.get_top_n_percent_results_by_source('internet', internet_percentage)
+        logger.info(f"Filtered {len(internet_results)} internet results")
         
-        # Get results from internet sources
-        internet_results = self.get_assessed_results_by_source('internet')
-        filtered_internet = self.filter_top_percentage(internet_results, internet_percentage)
+        # Filter research paper results
+        research_results = self.get_top_n_percent_results_by_source('paper', research_percentage)
+        logger.info(f"Filtered {len(research_results)} research paper results")
         
-        logger.info(f"Internet sources: {len(internet_results)} total → {len(filtered_internet)} filtered ({internet_percentage}%)")
+        # Combine results
+        all_filtered_results = internet_results + research_results
+        logger.info(f"Total filtered results: {len(all_filtered_results)}")
         
-        return {
-            'research_papers': filtered_research,
-            'internet': filtered_internet,
-            'summary': {
-                'research_papers_total': len(research_results),
-                'research_papers_filtered': len(filtered_research),
-                'research_papers_percentage': research_percentage,
-                'internet_total': len(internet_results),
-                'internet_filtered': len(filtered_internet),
-                'internet_percentage': internet_percentage,
-                'total_filtered': len(filtered_research) + len(filtered_internet)
-            }
-        }
+        # Generate output filename if not provided
+        if output_file is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_dir = Path("outputs")
+            output_dir.mkdir(exist_ok=True)
+            output_file = str(output_dir / f"filtered_results_{timestamp}.json")
+        
+        # Save to JSON file
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(all_filtered_results, f, indent=2, ensure_ascii=False, default=str)
+            
+            logger.info(f"Filtered results saved to: {output_file}")
+            return output_file
+            
+        except Exception as e:
+            logger.error(f"Error saving filtered results to {output_file}: {e}")
+            raise
     
     def get_filtering_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about available results for filtering.
         
         Returns:
-            Dictionary with statistics about assessed results by source
+            Dictionary with counts and statistics for each source type
         """
         stats = {}
         
-        for source_type in ['paper', 'internet']:
-            results = self.get_assessed_results_by_source(source_type)
+        for source_type in ['internet', 'paper']:
+            results = self.db.get_results_for_filtering(source_type)
             
             if results:
-                scores = [r['weighted_average_score'] for r in results if r['weighted_average_score']]
+                scores = [r['weighted_average_score'] for r in results if r['weighted_average_score'] is not None]
                 stats[source_type] = {
                     'total_count': len(results),
                     'avg_score': sum(scores) / len(scores) if scores else 0,
                     'min_score': min(scores) if scores else 0,
                     'max_score': max(scores) if scores else 0,
-                    'score_range': f"{min(scores):.2f} - {max(scores):.2f}" if scores else "N/A"
+                    'top_10_percent_count': max(1, int(len(results) * 0.1)),
+                    'top_15_percent_count': max(1, int(len(results) * 0.15))
                 }
             else:
                 stats[source_type] = {
@@ -149,150 +142,83 @@ class ResultFilteringModule:
                     'avg_score': 0,
                     'min_score': 0,
                     'max_score': 0,
-                    'score_range': "N/A"
+                    'top_10_percent_count': 0,
+                    'top_15_percent_count': 0
                 }
         
+        logger.info(f"Filtering statistics: {stats}")
         return stats
-    
-    def save_filtered_results(self, filtered_results: Dict[str, List[Dict[str, Any]]], 
-                            output_file: Optional[str] = None) -> str:
-        """
-        Save filtered results to JSON file.
-        
-        Args:
-            filtered_results: Results from get_filtered_results()
-            output_file: Optional output file path
-            
-        Returns:
-            Path to saved file
-        """
-        import json
-        from datetime import datetime
-        from pathlib import Path
-        
-        if output_file is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = f"outputs/filtered_results_{timestamp}.json"
-        
-        # Ensure outputs directory exists
-        Path(output_file).parent.mkdir(exist_ok=True)
-        
-        # Prepare data for JSON serialization
-        serializable_results = {
-            'metadata': {
-                'filtered_at': datetime.now().isoformat(),
-                'summary': filtered_results.get('summary', {})
-            },
-            'research_papers': filtered_results['research_papers'],
-            'internet': filtered_results['internet']
-        }
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(serializable_results, f, indent=2, ensure_ascii=False, default=str)
-        
-        logger.info(f"Filtered results saved to {output_file}")
-        return output_file
 
 
 def main():
-    """CLI interface for result filtering."""
+    """Command-line interface for the filtering module."""
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Filter assessed query results to keep top-rated results from each source",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    python result_filtering_module.py                    # Filter with default 10% from each source
-    python result_filtering_module.py --research 20 --internet 10   # Custom percentages
-    python result_filtering_module.py --stats            # Show statistics only
-        """
+        description="Filter assessed query results by source type and quality score",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    
     parser.add_argument(
-        '--research',
-        type=float,        default=10.0,
-        help='Percentage of research paper results to keep (default: 10)'
-    )
-    
-    parser.add_argument(
-        '--internet', 
-        type=float,        default=10.0,
-        help='Percentage of internet results to keep (default: 10)'
-    )
-    
-    parser.add_argument(
-        '--stats',
-        action='store_true',
-        help='Show filtering statistics only'
-    )
-    
-    parser.add_argument(
-        '--output',
+        "--db-path",
         type=str,
-        help='Output file path for filtered results'
+        default=None,
+        help="Path to the SQLite database file"
+    )
+    parser.add_argument(
+        "--internet-percentage",
+        type=float,
+        default=10.0,
+        help="Percentage of top internet results to keep"
+    )
+    parser.add_argument(
+        "--research-percentage", 
+        type=float,
+        default=10.0,
+        help="Percentage of top research paper results to keep"
+    )
+    parser.add_argument(
+        "--output-file",
+        type=str,
+        default=None,
+        help="Output JSON file path (default: auto-generated with timestamp)"
+    )
+    parser.add_argument(
+        "--stats-only",
+        action="store_true",
+        help="Only show filtering statistics, don't filter results"
     )
     
     args = parser.parse_args()
     
-    # Setup logging
+    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
     
-    # Initialize module
-    db = Database()
-    filtering_module = ResultFilteringModule(db)
+    # Initialize filtering module
+    filtering_module = ResultFilteringModule(db_path=args.db_path)
     
-    # Show statistics if requested
-    if args.stats:
-        print("📊 Result Filtering Statistics")
-        print("=" * 40)
-        
+    if args.stats_only:
+        # Show statistics only
         stats = filtering_module.get_filtering_statistics()
-        
-        for source_type, source_stats in stats.items():
-            print(f"\n{source_type.replace('_', ' ').title()}:")
-            print(f"  Total assessed results: {source_stats['total_count']}")
-            print(f"  Average score: {source_stats['avg_score']:.2f}")
-            print(f"  Score range: {source_stats['score_range']}")
-            
-            if source_stats['total_count'] > 0:
-                keep_10_percent = max(1, int(source_stats['total_count'] * 0.10))
-                print(f"  Would keep (10%): {keep_10_percent} results")
-        
-        return 0
-    
-    # Perform filtering
-    try:
-        print(f"🔍 Filtering results...")
-        print(f"Research papers: keeping top {args.research}%")
-        print(f"Internet sources: keeping top {args.internet}%")
-        
-        filtered_results = filtering_module.get_filtered_results(
-            research_percentage=args.research,
-            internet_percentage=args.internet
+        print("\n=== Filtering Statistics ===")
+        for source_type, data in stats.items():
+            print(f"\n{source_type.upper()} Results:")
+            print(f"  Total assessed: {data['total_count']}")
+            print(f"  Average score: {data['avg_score']:.2f}")
+            print(f"  Score range: {data['min_score']:.2f} - {data['max_score']:.2f}")
+            print(f"  Top 10% count: {data['top_10_percent_count']}")
+            print(f"  Top 15% count: {data['top_15_percent_count']}")
+    else:
+        # Filter and save results
+        output_file = filtering_module.filter_and_save_results(
+            internet_percentage=args.internet_percentage,
+            research_percentage=args.research_percentage,
+            output_file=args.output_file
         )
-        
-        # Show summary
-        summary = filtered_results['summary']
-        print(f"\n📈 Filtering Results:")
-        print(f"Research papers: {summary['research_papers_total']} → {summary['research_papers_filtered']}")
-        print(f"Internet sources: {summary['internet_total']} → {summary['internet_filtered']}")
-        print(f"Total filtered results: {summary['total_filtered']}")
-        
-        # Save results
-        output_file = filtering_module.save_filtered_results(filtered_results, args.output)
-        print(f"\n✅ Results saved to: {output_file}")
-        
-        return 0
-        
-    except Exception as e:
-        print(f"\n❌ Filtering failed: {e}")
-        return 1
+        print(f"\nFiltered results saved to: {output_file}")
 
 
 if __name__ == "__main__":
-    import sys
-    sys.exit(main())
+    main()
