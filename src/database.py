@@ -174,6 +174,23 @@ class Database:
             conn.commit()
         except Exception as e:
             logger.error(f"Migration error: {e}")
+    
+    def remove_duplicates(self):
+        """
+        Remove duplicate entries from query_results and associated assessments.
+        Duplicates are determined by identical URL and title; only the lowest id is kept.
+        """
+        with self.get_connection() as conn:
+            # Delete assessments for removed query_results
+            conn.execute(
+                'DELETE FROM query_result_assessments WHERE query_result_id NOT IN (SELECT id FROM query_results)'
+            )
+            # Delete duplicate query_results, keep min(id) for each (url, title)
+            conn.execute(
+                'DELETE FROM query_results WHERE id NOT IN '
+                '(SELECT MIN(id) FROM query_results GROUP BY COALESCE(url, \'\'), COALESCE(title, \'\'))'
+            )
+            conn.commit()
 
     def add_query(self, query_text: str, original_user_query: str = None) -> int:
         """Add a new search query to the database."""
@@ -392,6 +409,28 @@ class Database:
             conn.commit()
             logger.info(f"Deleted fetched_content record with ID {fetched_content_id}. Rows affected: {cursor.rowcount}")
             return cursor.rowcount > 0
+
+    def reset_fetched_content(self):
+        """
+        Clear all records in fetched_content table before new workflow run.
+        """
+        conn = self.get_connection()
+        with conn:
+            conn.execute('DELETE FROM fetched_content')
+
+    def remove_unwanted_query_results(self, keep_ids: List[int]):
+        """
+        In a database copy, delete all query_results, assessments, and fetched_content
+        that are not in the keep_ids list.
+        """
+        placeholders = ",".join(["?" for _ in keep_ids]) if keep_ids else "''"
+        with self.get_connection() as conn:
+            # Delete assessments and fetched_content not in keep_ids
+            conn.execute(f"DELETE FROM query_result_assessments WHERE query_result_id NOT IN ({placeholders})", keep_ids)
+            conn.execute(f"DELETE FROM fetched_content WHERE query_result_id NOT IN ({placeholders})", keep_ids)
+            # Delete other query_results
+            conn.execute(f"DELETE FROM query_results WHERE id NOT IN ({placeholders})", keep_ids)
+            conn.commit()
 
     # --- Assessment Methods ---
     # ... (existing assessment methods: add_query_result_assessment, get_assessment_by_result_id, etc.) ...

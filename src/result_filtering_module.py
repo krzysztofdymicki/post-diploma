@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from src.database import Database
+from database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,15 @@ class ResultFilteringModule:
         Returns:
             List of filtered results with assessment scores
         """
+        # Remove duplicates before filtering
+        self.db.remove_duplicates()
+        
         logger.info(f"Filtering top {percentage}% results for source_type: {source_type}")
         
+        # If percentage is zero or negative, return no results immediately
+        if percentage <= 0:
+            logger.info(f"Percentage set to {percentage}%, returning no results for source_type: {source_type}")
+            return []
         # Normalize source_type (handle both 'paper' and 'research_papers')
         if source_type in ['research_papers', 'paper']:
             source_type = 'paper'

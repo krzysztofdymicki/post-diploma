@@ -10,16 +10,26 @@ This script orchestrates the second part of the research workflow:
 """
 
 import argparse
+import asyncio
 import logging
 import os
 import json
+from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
+from browser_use import Controller, Agent as BUAgent
+import shutil
 
 from database import Database
 from result_filtering_module import ResultFilteringModule
-from browsing_agent import BrowsingAgent # Assuming browser-use based agent
+# Use our ContentExtractionAgent for browsing via browser-use
+from browsing_agent import ContentExtractionAgent as BrowsingAgent
+# from browser_use import Controller  # not used here
+# from pydantic import BaseModel      # not used here
+# from typing import Optional        # not used here
 
 # Configure logging
 log_dir = Path("logs")
@@ -37,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def process_filtered_results(db: Database, agent: BrowsingAgent, filtered_results: List[Dict[str, Any]]):
+async def process_filtered_results(db: Database, agent: BrowsingAgent, filtered_results: List[Dict[str, Any]]):
     logger.info(f"Processing {len(filtered_results)} filtered results.")
     for result in filtered_results:
         query_result_id = result.get('id')
@@ -65,48 +75,49 @@ def process_filtered_results(db: Database, agent: BrowsingAgent, filtered_result
         fetch_status = "pending"
 
         try:
-            if source_type in ['paper', 'research_papers'] and pdf_url:
-                logger.info(f"Attempting to download PDF for paper: {result.get('title')} from {pdf_url}")
-                # Construct a meaningful filename, e.g., based on result ID or title
-                safe_title = "".join(c if c.isalnum() else '_' for c in result.get('title', f'doc_{query_result_id}')[:50])
-                pdf_filename = f"paper_{query_result_id}_{safe_title}.pdf"
-                
-                downloaded_pdf_path = agent.download_pdf(pdf_url, filename=pdf_filename)
-                if downloaded_pdf_path:
-                    logger.info(f"PDF downloaded successfully: {downloaded_pdf_path}")
-                    content_type_stored = "pdf_path"
-                    stored_path_or_content = downloaded_pdf_path
-                    fetch_status = "success"
-                else:
-                    logger.warning(f"Failed to download PDF from {pdf_url}. Will attempt to fetch HTML of abstract page {url} if available.")
-                    error_message = f"PDF download failed from {pdf_url}."
-                    # Fallback to HTML if PDF download fails and original URL is present
-                    if url:
-                        html_content = agent.get_html_content(url)
-                        if html_content:
-                            logger.info(f"Fetched HTML for abstract page: {url}")
-                            content_type_stored = "html"
-                            stored_path_or_content = html_content
-                            fetch_status = "success"
-                            error_message = None # Clear previous PDF error if HTML succeeded
-                        else:
-                            logger.error(f"Failed to fetch HTML for abstract page {url} after PDF failure.")
-                            error_message += " Also failed to fetch HTML fallback."
-                            fetch_status = "failed"
-                    else:
-                        fetch_status = "failed"
-            elif url: # For internet sources or papers without a direct PDF link (fetch abstract page)
-                logger.info(f"Attempting to fetch HTML content for: {result.get('title')} from {url}")
-                html_content = agent.get_html_content(url)
-                if html_content:
-                    logger.info(f"HTML content fetched successfully for {url}")
-                    content_type_stored = "html"
-                    stored_path_or_content = html_content
-                    fetch_status = "success"
-                else:
-                    logger.error(f"Failed to fetch HTML content for {url}")
-                    error_message = f"HTML fetch failed for {url}."
-                    fetch_status = "failed"
+            # Skip research paper fetching for now
+            if source_type in ['paper', 'research_papers']:
+                logger.info(f"Skipping research source ID {query_result_id}")
+                fetch_status = 'skipped'
+                # record minimal info and continue
+                db.add_or_update_fetched_content(
+                    query_result_id=query_result_id,
+                    url=url or pdf_url,
+                    status=fetch_status,
+                    content_type=None,
+                    parsed_content=None
+                )
+                continue
+            # Internet sources only
+            if source_type == 'internet' and url:
+                logger.info(f"Enhanced extraction for URL: {url}")
+                from browser_use import Agent as BrowserAgent
+                # Build custom task prompt
+                task = f"""
+                Navigate to {url} and extract:
+                1. Main text content.
+                2. Author name (if available).
+                3. Publication date (if available).
+
+                Return a JSON object with keys: 'url', 'author', 'publication_date', 'content'.
+                """
+                actions = [ {'open_tab': {'url': url}}, {'wait': {'seconds': 3}} ]
+                browser_agent = BrowserAgent(task=task, initial_actions=actions, llm=agent.llm)
+                raw = await browser_agent.run(max_steps=50)
+                result_str = str(raw)
+                try:
+                    parsed = json.loads(result_str)
+                    content = parsed.get('content')
+                    author = parsed.get('author')
+                    publication_date = parsed.get('publication_date')
+                except Exception:
+                    content = result_str
+                    author = None
+                    publication_date = None
+                content_type_stored = 'html'
+                # Include author and date in stored content for now
+                stored_path_or_content = json.dumps({ 'url': url, 'author': author, 'publication_date': publication_date, 'content': content }, ensure_ascii=False)
+                fetch_status = 'success'
             else:
                 logger.warning(f"Skipping result ID {query_result_id} - no URL or PDF URL provided.")
                 error_message = "No URL or PDF URL available for fetching."
@@ -124,13 +135,8 @@ def process_filtered_results(db: Database, agent: BrowsingAgent, filtered_result
                 url=url or pdf_url, # Store the primary URL used for fetching
                 status=fetch_status,
                 content_type=content_type_stored,
-                # For HTML, store content directly; for PDF, store path
-                parsed_content=stored_path_or_content if content_type_stored == "html" else None,
-                # Store PDF path in a new dedicated column or use a generic field if schema allows
-                # For now, let's assume parsed_content can hold path for PDF, or add a new field later
-                # If storing PDF path, ensure it's distinguishable from HTML content.
-                # A better approach: add a 'file_path' column to fetched_content table.
-                # For this iteration, if content_type is 'pdf_path', parsed_content will be the path.
+                # Store parsed_content for both HTML and PDF paths
+                parsed_content=stored_path_or_content,
                 title_extracted=result.get('title'), # Can be enhanced later with actual extraction
                 content_length=len(stored_path_or_content) if stored_path_or_content else 0,
                 error_message=error_message
@@ -199,11 +205,15 @@ async def main():
     logger.info(f"Log file: {log_file.resolve()}")
     logger.info(f"Arguments: {args}")
 
+    # Reset fetched_content in original DB
     db = Database(db_path=args.db_path)
+    db.reset_fetched_content()
+
     # Ensure the output directory for agent downloads exists
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
-    agent = BrowsingAgent(download_dir=args.output_dir, headless=args.headless_browser)
+    # Initialize browsing agent for internet sources
+    agent = BrowsingAgent(llm=ChatGoogleGenerativeAI(model='gemini-2.5-flash-preview-05-20'), output_dir=args.output_dir)
 
     all_filtered_results: List[Dict[str, Any]] = []
 
@@ -263,6 +273,21 @@ async def main():
         results_to_process = all_filtered_results[:args.max_results_to_process]
     else:
         results_to_process = all_filtered_results
+
+    # After filtering, create filtered DB copy
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    new_db_path = os.path.join(os.path.dirname(db.db_path), f"filtered_results_{ts}.db")
+    shutil.copyfile(db.db_path, new_db_path)
+    logger.info(f"Created filtered DB: {new_db_path}")
+    filtered_db = Database(db_path=new_db_path)
+    # Keep only filtered query_results in filtered DB
+    keep_ids = [item['id'] for item in all_filtered_results]
+    filtered_db.remove_unwanted_query_results(keep_ids)
+    # Clear any old fetched_content
+    filtered_db.reset_fetched_content()
+
+    # Use filtered_db for content fetching
+    db = filtered_db
 
     try:
         await process_filtered_results(db, agent, results_to_process)
