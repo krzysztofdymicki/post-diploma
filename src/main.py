@@ -624,8 +624,10 @@ async def run_filtering_workflow(args):
     print("🔍 Starting Result Filtering Workflow...")
     
     try:
+        # Initialize database and filtering module
         db = Database()
-        filtering_module = ResultFilteringModule(db)
+        # Pass the database path to the filtering module (avoid passing Database object)
+        filtering_module = ResultFilteringModule(db_path=db.db_path)
         
         # Show current statistics
         print("\n📊 Current Database Statistics:")

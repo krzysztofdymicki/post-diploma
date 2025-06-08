@@ -2,7 +2,8 @@ tests
 .github
 .pytest_cache
 .env
-outputs
-logs
-data
-__pycache__
+data/
+logs/
+outputs/
+src/outputs/
+**/__pycache__/
