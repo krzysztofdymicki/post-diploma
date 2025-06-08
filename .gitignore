@@ -1,3 +1,7 @@
+python
+.env.example
+src/main_part2.py
+aq_query_generator.py
 tests
 .github
 .pytest_cache
