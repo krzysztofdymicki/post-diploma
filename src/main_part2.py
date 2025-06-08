@@ -95,11 +95,14 @@ async def process_filtered_results(db: Database, agent: BrowsingAgent, filtered_
                 # Build custom task prompt
                 task = f"""
                 Navigate to {url} and extract:
-                1. Main text content.
-                2. Author name (if available).
-                3. Publication date (if available).
+                  1. Main text content.
+                  2. Author name (if available).
+                  3. Publication date (if available).
 
-                Return a JSON object with keys: 'url', 'author', 'publication_date', 'content'.
+                If this page is clearly an academic research repository or paper site (e.g., journal portal, PDF database), stop and return:
+                  {{"url": "{url}", "status": "skipped_research"}}
+                Otherwise, after extraction return a JSON object with keys:
+                  'url', 'author', 'publication_date', 'content'.
                 """
                 actions = [ {'open_tab': {'url': url}}, {'wait': {'seconds': 3}} ]
                 browser_agent = BrowserAgent(task=task, initial_actions=actions, llm=agent.llm)
