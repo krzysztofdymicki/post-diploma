@@ -5,3 +5,4 @@ tests
 outputs
 logs
 data
+__pycache__
