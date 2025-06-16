@@ -48,13 +48,11 @@ post-diploma/
 │                           # Typically in .gitignore
 ├── outputs/                # Generated queries JSON, workflow results JSON
 │                           # Typically in .gitignore
-├── tests/                  # Unit and integration tests
 ├── requirements.txt        # Python package dependencies
 ├── .gitignore              # Specifies intentionally untracked files
 ├── .env.example            # Template for environment variables
 ├── .env                    # Local environment variables (should be in .gitignore)
 ├── README.md               # This file
-└── OPIS_PROJEKTU.txt       # Detailed project description in Polish
 ```
 
 ## Installation and Setup
