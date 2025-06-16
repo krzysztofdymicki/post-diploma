@@ -79,11 +79,8 @@ post-diploma/
     ```bash
     cp .env.example .env
     ```
-    Edit the `.env` file and add your API keys and other configurations:
+    Add the `.env` file and add your API keys and other configurations:
     -   `GEMINI_API_KEY`: Your Google Gemini API key.
-    -   `TAVILY_API_KEY`: Your Tavily Search API key (or other relevant search API keys).
-    -   `DATABASE_PATH`: Path to the SQLite database file (default: `data/research_db.db`).
-    -   `LOG_LEVEL`: (Optional) Logging level, e.g., `INFO`, `DEBUG`.
 
 ## Usage (Command-Line Interface)
 
